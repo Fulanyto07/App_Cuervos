@@ -1,0 +1,6 @@
+streamlit
+pandas
+pillow
+fpdf
+openpyxl
+st-gsheets-connection
