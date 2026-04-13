@@ -4,3 +4,4 @@ pillow
 fpdf
 openpyxl
 st-gsheets-connection
+supabase
