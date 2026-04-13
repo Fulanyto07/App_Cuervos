@@ -5,7 +5,7 @@ from PIL import Image
 import io
 import os
 
-# Librerías opcionales para exportar
+# Intentar cargar la librería de PDF
 try:
     from fpdf import FPDF
     FPDF_DISPONIBLE = True
@@ -16,24 +16,35 @@ except ImportError:
 st.set_page_config(page_title="Gestor Cuervos Cloud", page_icon="🐦‍⬛", layout="wide")
 
 # 2. Conexión a Google Sheets
-# Nota: Configuraremos las credenciales en el paso 3
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# 3. Sistema de reseteo de formulario
+if 'contador_form' not in st.session_state:
+    st.session_state.contador_form = 0
+
+def limpiar_formulario():
+    st.session_state.contador_form += 1
+
+# 4. Control del estado del Torneo (En la nube usaremos st.sidebar para esto)
+if 'estado_torneo' not in st.session_state:
+    st.session_state.estado_torneo = "Regular"
+
+# 5. Funciones de datos
 def cargar_datos_cloud():
     try:
-        # Intenta leer la hoja llamada "Resultados"
-        return conn.read(worksheet="Resultados", ttl=0)
+        df_cloud = conn.read(worksheet="Resultados", ttl=0)
+        # Limpiar filas vacías que Google Sheets suele agregar al final
+        df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
+        return df_cloud
     except:
-        # Si la hoja está vacía o no existe, crea la estructura inicial
         return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
 
 def guardar_datos_cloud(df_nuevo):
-    # Limpieza de filas vacías antes de subir
+    # Limpieza estricta antes de subir
     df_nuevo = df_nuevo.dropna(subset=['Equipo Rival'])
     df_nuevo = df_nuevo[~df_nuevo['Equipo Rival'].astype(str).str.strip().isin(['nan', 'None', ''])]
     conn.update(worksheet="Resultados", data=df_nuevo)
 
-# --- (Las funciones de iconos, marcador, pdf y excel siguen igual) ---
 def obtener_icono_resultado(resultado):
     res_str = str(resultado)
     if res_str in ['nan', 'None', '']: return ""
@@ -49,14 +60,143 @@ def limpiar_icono_resultado(resultado):
 def procesar_marcador(favor, contra, so_ganador):
     if favor > contra: return 3, "Victoria"
     elif favor < contra: return 0, "Derrota"
-    else: return (2, "Empate (G-SO)") if so_ganador == "Cuervos" else (1, "Empate (P-SO)")
+    else:
+        return (2, "Empate (G-SO)") if so_ganador == "Cuervos" else (1, "Empate (P-SO)")
 
-# Carga inicial desde la nube
+def generar_excel(df_reg):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_reg.to_excel(writer, index=False, sheet_name='Fase Regular')
+    return output.getvalue()
+
+def generar_pdf(df_reg):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, txt="Reporte Cuervos - Fase Regular", ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", "B", 10)
+    cols, anchos = ['Jornada', 'Equipo Rival', 'GF', 'GC', 'Resultado', 'Pts'], [20, 60, 20, 20, 40, 20]
+    for i, col in enumerate(cols): pdf.cell(anchos[i], 10, col, border=1, align='C')
+    pdf.ln()
+    pdf.set_font("Arial", "", 10)
+    for _, row in df_reg.iterrows():
+        pdf.cell(anchos[0], 10, str(row.get('Jornada', '')), border=1, align='C')
+        pdf.cell(anchos[1], 10, str(row.get('Equipo Rival', ''))[:25], border=1, align='C')
+        pdf.cell(anchos[2], 10, str(row.get('Goles a Favor', '')), border=1, align='C')
+        pdf.cell(anchos[3], 10, str(row.get('Goles en Contra', '')), border=1, align='C')
+        pdf.cell(anchos[4], 10, str(row.get('Resultado', '')), border=1, align='C')
+        pdf.cell(anchos[5], 10, str(row.get('Puntos', '')), border=1, align='C')
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- CARGA INICIAL ---
 df = cargar_datos_cloud()
 
-# --- INTERFAZ PRINCIPAL (Dashboard y Registro) ---
-# (Aquí va el resto de tu lógica de Streamlit que ya conocemos)
-# Al final de cada acción de "Guardar", cambiaremos el df.to_csv por:
-# guardar_datos_cloud(df)
+# --- BARRA LATERAL ---
+with st.sidebar:
+    if os.path.exists("cuervos_logo.png"):
+        st.image(Image.open("cuervos_logo.png"), width=120)
+    st.header("⚙️ Menú Admin")
+    fases = ["Regular", "Cuartos", "Semifinal", "Final", "Eliminado", "Campeon"]
+    st.session_state.estado_torneo = st.selectbox("Fase Actual:", fases, index=fases.index(st.session_state.estado_torneo))
+    
+    st.divider()
+    if st.button("🔄 Refrescar Datos Google Sheets"):
+        st.cache_data.clear()
+        st.rerun()
 
-st.info("⚠️ Para que esta app funcione en la nube, necesitamos configurar el 'Secrets' en Streamlit Cloud con tu enlace de Google Sheets.")
+# --- INTERFAZ PRINCIPAL ---
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.markdown("<h1 style='text-align: center;'>Gestor de Temporada: Cuervos</h1>", unsafe_allow_html=True)
+
+# Dashboard de Totales
+df_reg_stats = df[df["Fase"] == "Regular"]
+pts_reg = int(df_reg_stats["Puntos"].sum()) if not df_reg_stats.empty else 0
+df_j = df_reg_stats[~df_reg_stats["Resultado"].astype(str).str.contains("Pendiente")]
+jj, jg, je, jp = len(df_j), len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria")]), len(df_j[df_j["Resultado"].astype(str).str.contains("Empate")]), len(df_j[df_j["Resultado"].astype(str).str.contains("Derrota")])
+gf, gc = int(df_j["Goles a Favor"].sum()) if not df_j.empty else 0, int(df_j["Goles en Contra"].sum()) if not df_j.empty else 0
+
+c_pts, c_stats = st.columns([1, 3])
+c_pts.metric("Puntos", f"{pts_reg} pts")
+c_stats.markdown(f"""<div style='display:flex; justify-content:space-around; padding-top:20px;'>
+    <div style='text-align:center;'><small>J.J</small><br><b>{jj}</b></div>
+    <div style='text-align:center;'><small>J.G</small><br><b>{jg}</b></div>
+    <div style='text-align:center;'><small>J.E</small><br><b>{je}</b></div>
+    <div style='text-align:center;'><small>J.P</small><br><b>{jp}</b></div>
+    <div style='text-align:center;'><small>G.F</small><br><b>{gf}</b></div>
+    <div style='text-align:center;'><small>G.C</small><br><b>{gc}</b></div></div>""", unsafe_allow_html=True)
+st.divider()
+
+col_f, col_h = st.columns([2, 3])
+
+# --- REGISTRO ---
+with col_f:
+    estado = st.session_state.estado_torneo
+    if estado == "Regular":
+        st.subheader("Registrar Partido")
+        suffix = st.session_state.contador_form
+        max_j = pd.to_numeric(df_reg_stats["Jornada"], errors='coerce').max()
+        next_j = int(max_j) + 1 if pd.notna(max_j) else 1
+        
+        st.number_input("Jornada", value=next_j, disabled=True, key=f"j_{suffix}")
+        rival = st.text_input("Equipo Rival", key=f"r_{suffix}")
+        es_pend = st.checkbox("⏳ Pendiente", key=f"p_{suffix}")
+        
+        g_f, g_c, g_so = 0, 0, None
+        if not es_pend:
+            cx, cy = st.columns(2)
+            g_f = cx.number_input("Goles Cuervos", min_value=0, step=1, key=f"gf_{suffix}")
+            g_c = cy.number_input("Goles Rival", min_value=0, step=1, key=f"gc_{suffix}")
+            if g_f == g_c: g_so = st.radio("Ganador SO:", ["Cuervos", "Rival"], horizontal=True, key=f"so_{suffix}")
+        
+        if st.button("Guardar Partido", type="primary"):
+            if rival.strip():
+                if es_pend: p, r, gf_i, gc_i = 0, "Pendiente", 0, 0
+                else: p, r = procesar_marcador(g_f, g_c, g_so); gf_i, gc_i = g_f, g_c
+                nuevo = pd.DataFrame([{"Jornada": next_j, "Fase": "Regular", "Equipo Rival": rival.strip(), "Goles a Favor": gf_i, "Goles en Contra": gc_i, "Resultado": r, "Puntos": p}])
+                df = pd.concat([df, nuevo], ignore_index=True)
+                guardar_datos_cloud(df)
+                limpiar_formulario()
+                st.rerun()
+    elif estado in ["Cuartos", "Semifinal", "Final"]:
+        st.subheader(f"🏆 Liguilla: {estado}")
+        rival = st.text_input("Rival")
+        cx, cy = st.columns(2)
+        gf_l = cx.number_input("Goles", min_value=0)
+        gc_l = cy.number_input("Rival", min_value=0)
+        if st.button("Guardar Liguilla"):
+            _, res = procesar_marcador(gf_l, gc_l, "Cuervos") # SO simplificado en nube
+            nuevo = pd.DataFrame([{"Jornada": "-", "Fase": estado, "Equipo Rival": rival, "Goles a Favor": gf_l, "Goles en Contra": gc_l, "Resultado": res, "Puntos": 0}])
+            df = pd.concat([df, nuevo], ignore_index=True)
+            guardar_datos_cloud(df)
+            st.rerun()
+    else:
+        st.info(f"Torneo en fase: {estado}")
+
+# --- TABLAS ---
+with col_h:
+    t1, t2 = st.tabs(["Fase Regular", "Liguilla"])
+    df_v = df.copy()
+    if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono_resultado)
+
+    with t1:
+        df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
+        df_ed = st.data_editor(df_rv, height=400, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"Fase": None})
+        if st.button("💾 Guardar Correcciones"):
+            df_cl = df_ed.copy()
+            df_cl = df_cl.dropna(subset=['Equipo Rival'])
+            df_cl['Resultado'] = df_cl['Resultado'].apply(limpiar_icono_resultado)
+            pd_final = pd.concat([df_cl, df[df["Fase"] != "Regular"]], ignore_index=True)
+            guardar_datos_cloud(pd_final)
+            st.rerun()
+        
+        c_p, c_x = st.columns(2)
+        df_exp = df_ed.copy(); df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono_resultado)
+        if FPDF_DISPONIBLE: c_p.download_button("📄 PDF", generar_pdf(df_exp), "Cuervos.pdf")
+        c_x.download_button("📊 Excel", generar_excel(df_exp), "Cuervos.xlsx")
+
+    with t2:
+        df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
+        st.data_editor(df_lv, use_container_width=True, hide_index=True, column_config={"Jornada": None, "Puntos": None})
