@@ -34,13 +34,25 @@ def cargar_datos_cloud():
     try:
         # ttl=0 para que siempre traiga los datos más frescos de la nube
         df_cloud = conn.read(worksheet="Resultados", ttl=0)
-        df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
-        # Aseguramos que los puntos y goles sean enteros
-        df_cloud["Puntos"] = pd.to_numeric(df_cloud["Puntos"], errors='coerce').fillna(0).astype(int)
-        df_cloud["Goles a Favor"] = pd.to_numeric(df_cloud["Goles a Favor"], errors='coerce').fillna(0).astype(int)
-        df_cloud["Goles en Contra"] = pd.to_numeric(df_cloud["Goles en Contra"], errors='coerce').fillna(0).astype(int)
+        
+        # Si la hoja está totalmente vacía, devolver estructura limpia
+        if df_cloud is None or df_cloud.empty:
+            return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
+        
+        # Limpieza de filas fantasma de Google Sheets
+        if "Equipo Rival" in df_cloud.columns:
+            df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
+            df_cloud = df_cloud[~df_cloud['Equipo Rival'].astype(str).str.strip().isin(['nan', 'None', ''])]
+            
+            # Aseguramos que los puntos, jornada y goles sean enteros (sin .0)
+            columnas_num = ["Jornada", "Puntos", "Goles a Favor", "Goles en Contra"]
+            for col in columnas_num:
+                if col in df_cloud.columns:
+                    df_cloud[col] = pd.to_numeric(df_cloud[col], errors='coerce').fillna(0).astype(int)
+        
         return df_cloud
-    except:
+    except Exception as e:
+        # Si hay error de conexión o pestaña inexistente
         return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
 
 def guardar_datos_cloud(df_nuevo):
@@ -53,7 +65,7 @@ def guardar_datos_cloud(df_nuevo):
         st.cache_data.clear() # Limpiamos caché para ver cambios al instante
     except Exception as e:
         st.error(f"Error al guardar en Google Sheets: {e}")
-        st.info("Asegúrate de haber añadido el correo gsheets-connection@streamlit.iam.gserviceaccount.com como EDITOR en tu Google Sheet.")
+        st.info("Revisa que gsheets-connection@streamlit.iam.gserviceaccount.com sea EDITOR en tu Google Sheet.")
 
 def obtener_icono_resultado(resultado):
     res_str = str(resultado)
@@ -199,6 +211,7 @@ with col_f:
 
 # --- TABLAS ---
 with col_h:
+    st.markdown("💡 *Doble clic para editar. Para borrar, selecciona fila y presiona Suprimir.*")
     t1, t2 = st.tabs(["Fase Regular", "Liguilla"])
     df_v = df.copy()
     if not df_v.empty: 
@@ -206,7 +219,6 @@ with col_h:
 
     with t1:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
-        # num_rows="dynamic" permite borrar filas con la tecla suprimir
         df_ed = st.data_editor(df_rv, height=400, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"Fase": None})
         
         if st.button("💾 Guardar Correcciones"):
