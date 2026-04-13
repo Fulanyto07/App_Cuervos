@@ -25,25 +25,35 @@ if 'contador_form' not in st.session_state:
 def limpiar_formulario():
     st.session_state.contador_form += 1
 
-# 4. Control del estado del Torneo (En la nube usaremos st.sidebar para esto)
+# 4. Control del estado del Torneo
 if 'estado_torneo' not in st.session_state:
     st.session_state.estado_torneo = "Regular"
 
 # 5. Funciones de datos
 def cargar_datos_cloud():
     try:
+        # ttl=0 para que siempre traiga los datos más frescos de la nube
         df_cloud = conn.read(worksheet="Resultados", ttl=0)
-        # Limpiar filas vacías que Google Sheets suele agregar al final
         df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
+        # Aseguramos que los puntos y goles sean enteros
+        df_cloud["Puntos"] = pd.to_numeric(df_cloud["Puntos"], errors='coerce').fillna(0).astype(int)
+        df_cloud["Goles a Favor"] = pd.to_numeric(df_cloud["Goles a Favor"], errors='coerce').fillna(0).astype(int)
+        df_cloud["Goles en Contra"] = pd.to_numeric(df_cloud["Goles en Contra"], errors='coerce').fillna(0).astype(int)
         return df_cloud
     except:
         return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
 
 def guardar_datos_cloud(df_nuevo):
-    # Limpieza estricta antes de subir
+    # Limpieza estricta de filas vacías antes de subir
     df_nuevo = df_nuevo.dropna(subset=['Equipo Rival'])
     df_nuevo = df_nuevo[~df_nuevo['Equipo Rival'].astype(str).str.strip().isin(['nan', 'None', ''])]
-    conn.update(worksheet="Resultados", data=df_nuevo)
+    
+    try:
+        conn.update(worksheet="Resultados", data=df_nuevo)
+        st.cache_data.clear() # Limpiamos caché para ver cambios al instante
+    except Exception as e:
+        st.error(f"Error al guardar en Google Sheets: {e}")
+        st.info("Asegúrate de haber añadido el correo gsheets-connection@streamlit.iam.gserviceaccount.com como EDITOR en tu Google Sheet.")
 
 def obtener_icono_resultado(resultado):
     res_str = str(resultado)
@@ -77,7 +87,8 @@ def generar_pdf(df_reg):
     pdf.ln(10)
     pdf.set_font("Arial", "B", 10)
     cols, anchos = ['Jornada', 'Equipo Rival', 'GF', 'GC', 'Resultado', 'Pts'], [20, 60, 20, 20, 40, 20]
-    for i, col in enumerate(cols): pdf.cell(anchos[i], 10, col, border=1, align='C')
+    for i, col in enumerate(cols): 
+        pdf.cell(anchos[i], 10, col, border=1, align='C')
     pdf.ln()
     pdf.set_font("Arial", "", 10)
     for _, row in df_reg.iterrows():
@@ -102,7 +113,7 @@ with st.sidebar:
     st.session_state.estado_torneo = st.selectbox("Fase Actual:", fases, index=fases.index(st.session_state.estado_torneo))
     
     st.divider()
-    if st.button("🔄 Refrescar Datos Google Sheets"):
+    if st.button("🔄 Refrescar Datos (Forzar)"):
         st.cache_data.clear()
         st.rerun()
 
@@ -115,8 +126,12 @@ with col2:
 df_reg_stats = df[df["Fase"] == "Regular"]
 pts_reg = int(df_reg_stats["Puntos"].sum()) if not df_reg_stats.empty else 0
 df_j = df_reg_stats[~df_reg_stats["Resultado"].astype(str).str.contains("Pendiente")]
-jj, jg, je, jp = len(df_j), len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria")]), len(df_j[df_j["Resultado"].astype(str).str.contains("Empate")]), len(df_j[df_j["Resultado"].astype(str).str.contains("Derrota")])
-gf, gc = int(df_j["Goles a Favor"].sum()) if not df_j.empty else 0, int(df_j["Goles en Contra"].sum()) if not df_j.empty else 0
+jj = len(df_j)
+jg = len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria")])
+je = len(df_j[df_j["Resultado"].astype(str).str.contains("Empate")])
+jp = len(df_j[df_j["Resultado"].astype(str).str.contains("Derrota")])
+gf = int(df_j["Goles a Favor"].sum()) if not df_j.empty else 0
+gc = int(df_j["Goles en Contra"].sum()) if not df_j.empty else 0
 
 c_pts, c_stats = st.columns([1, 3])
 c_pts.metric("Puntos", f"{pts_reg} pts")
@@ -149,41 +164,51 @@ with col_f:
             cx, cy = st.columns(2)
             g_f = cx.number_input("Goles Cuervos", min_value=0, step=1, key=f"gf_{suffix}")
             g_c = cy.number_input("Goles Rival", min_value=0, step=1, key=f"gc_{suffix}")
-            if g_f == g_c: g_so = st.radio("Ganador SO:", ["Cuervos", "Rival"], horizontal=True, key=f"so_{suffix}")
+            if g_f == g_c: 
+                g_so = st.radio("Ganador SO:", ["Cuervos", "Rival"], horizontal=True, key=f"so_{suffix}")
         
         if st.button("Guardar Partido", type="primary"):
             if rival.strip():
-                if es_pend: p, r, gf_i, gc_i = 0, "Pendiente", 0, 0
-                else: p, r = procesar_marcador(g_f, g_c, g_so); gf_i, gc_i = g_f, g_c
+                if es_pend: 
+                    p, r, gf_i, gc_i = 0, "Pendiente", 0, 0
+                else: 
+                    p, r = procesar_marcador(g_f, g_c, g_so)
+                    gf_i, gc_i = g_f, g_c
+                
                 nuevo = pd.DataFrame([{"Jornada": next_j, "Fase": "Regular", "Equipo Rival": rival.strip(), "Goles a Favor": gf_i, "Goles en Contra": gc_i, "Resultado": r, "Puntos": p}])
-                df = pd.concat([df, nuevo], ignore_index=True)
-                guardar_datos_cloud(df)
+                df_actualizado = pd.concat([df, nuevo], ignore_index=True)
+                guardar_datos_cloud(df_actualizado)
                 limpiar_formulario()
                 st.rerun()
+    
     elif estado in ["Cuartos", "Semifinal", "Final"]:
         st.subheader(f"🏆 Liguilla: {estado}")
-        rival = st.text_input("Rival")
+        rival_l = st.text_input("Rival")
         cx, cy = st.columns(2)
         gf_l = cx.number_input("Goles", min_value=0)
         gc_l = cy.number_input("Rival", min_value=0)
         if st.button("Guardar Liguilla"):
-            _, res = procesar_marcador(gf_l, gc_l, "Cuervos") # SO simplificado en nube
-            nuevo = pd.DataFrame([{"Jornada": "-", "Fase": estado, "Equipo Rival": rival, "Goles a Favor": gf_l, "Goles en Contra": gc_l, "Resultado": res, "Puntos": 0}])
-            df = pd.concat([df, nuevo], ignore_index=True)
-            guardar_datos_cloud(df)
-            st.rerun()
+            if rival_l.strip():
+                _, res_l = procesar_marcador(gf_l, gc_l, "Cuervos")
+                nuevo_l = pd.DataFrame([{"Jornada": "-", "Fase": estado, "Equipo Rival": rival_l.strip(), "Goles a Favor": gf_l, "Goles en Contra": gc_l, "Resultado": res_l, "Puntos": 0}])
+                df_l = pd.concat([df, nuevo_l], ignore_index=True)
+                guardar_datos_cloud(df_l)
+                st.rerun()
     else:
-        st.info(f"Torneo en fase: {estado}")
+        st.info(f"Fase actual: {estado}. Usa el menú lateral para cambiar.")
 
 # --- TABLAS ---
 with col_h:
     t1, t2 = st.tabs(["Fase Regular", "Liguilla"])
     df_v = df.copy()
-    if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono_resultado)
+    if not df_v.empty: 
+        df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono_resultado)
 
     with t1:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
+        # num_rows="dynamic" permite borrar filas con la tecla suprimir
         df_ed = st.data_editor(df_rv, height=400, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"Fase": None})
+        
         if st.button("💾 Guardar Correcciones"):
             df_cl = df_ed.copy()
             df_cl = df_cl.dropna(subset=['Equipo Rival'])
@@ -194,8 +219,9 @@ with col_h:
         
         c_p, c_x = st.columns(2)
         df_exp = df_ed.copy(); df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono_resultado)
-        if FPDF_DISPONIBLE: c_p.download_button("📄 PDF", generar_pdf(df_exp), "Cuervos.pdf")
-        c_x.download_button("📊 Excel", generar_excel(df_exp), "Cuervos.xlsx")
+        if FPDF_DISPONIBLE: 
+            c_p.download_button("📄 PDF", generar_pdf(df_exp), "Cuervos_Reporte.pdf")
+        c_x.download_button("📊 Excel", generar_excel(df_exp), "Cuervos_Reporte.xlsx")
 
     with t2:
         df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
