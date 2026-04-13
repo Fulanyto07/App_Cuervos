@@ -7,8 +7,18 @@ import os
 # 1. Configuración de la página
 st.set_page_config(page_title="Gestor Cuervos Cloud", page_icon="🐦‍⬛", layout="wide")
 
-# 2. Conexión a Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# 2. Conexión a Google Sheets con Sistema Anticaídas
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error("🚨 Error bloqueando la conexión a Google Sheets")
+    st.write("🔍 **Diagnóstico de Secrets detectados:**")
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+        st.code(list(st.secrets["connections"]["gsheets"].keys()), language="python")
+        st.info("Si no ves 'token_uri' o 'client_email' en esta lista, hay un salto de línea invisible rompiendo tus Secrets.")
+    else:
+        st.warning("No se detectó el encabezado [connections.gsheets].")
+    st.stop()
 
 # 3. Estado de la sesión
 if 'contador_form' not in st.session_state:
@@ -23,7 +33,6 @@ def cargar_datos():
             return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
         
         df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
-        # Limpieza de formatos numéricos
         for col in ["Jornada", "Puntos", "Goles a Favor", "Goles en Contra"]:
             if col in df_cloud.columns:
                 df_cloud[col] = pd.to_numeric(df_cloud[col], errors='coerce').fillna(0).astype(int)
