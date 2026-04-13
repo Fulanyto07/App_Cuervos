@@ -231,12 +231,14 @@ with col_f:
             idx_sel = opciones_pend.tolist().index(partido_sel)
             row_sel = df_pendientes.iloc[idx_sel]
             
-            j_val = int(row_sel["Jornada"])
-            st.number_input("Partido #", value=j_val, disabled=True, key=f"ju_{suffix}")
-            rival_val = row_sel["Equipo Rival"]
-            st.text_input("Equipo Rival", value=rival_val, disabled=True, key=f"ru_{suffix}")
-            es_pend = False 
             id_update = row_sel["id"]
+            j_val = int(row_sel["Jornada"])
+            
+            # EL TRUCO: Anexamos el id_update al "key" para que Streamlit limpie la caja al cambiar de selección
+            st.number_input("Partido #", value=j_val, disabled=True, key=f"ju_{id_update}_{suffix}")
+            rival_val = row_sel["Equipo Rival"]
+            st.text_input("Equipo Rival", value=rival_val, disabled=True, key=f"ru_{id_update}_{suffix}")
+            es_pend = False 
             
         g_f, g_c, g_so = 0, 0, None
         if not es_pend:
