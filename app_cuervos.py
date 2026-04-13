@@ -32,9 +32,7 @@ if 'estado_torneo' not in st.session_state:
 # 5. Funciones de datos
 def cargar_datos_cloud():
     try:
-        # ttl=0 evita que Streamlit guarde datos viejos en memoria
         df_cloud = conn.read(worksheet="Resultados", ttl=0)
-        
         if df_cloud is None or df_cloud.empty:
             return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
         
@@ -42,29 +40,23 @@ def cargar_datos_cloud():
             df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
             df_cloud = df_cloud[~df_cloud['Equipo Rival'].astype(str).str.strip().isin(['nan', 'None', ''])]
             
-            # Limpieza de tipos de datos para cálculos
             columnas_num = ["Jornada", "Puntos", "Goles a Favor", "Goles en Contra"]
             for col in columnas_num:
                 if col in df_cloud.columns:
                     df_cloud[col] = pd.to_numeric(df_cloud[col], errors='coerce').fillna(0).astype(int)
-        
         return df_cloud
-    except Exception as e:
+    except Exception:
         return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
 
 def guardar_datos_cloud(df_nuevo):
-    # Limpieza antes de subir
     df_nuevo = df_nuevo.dropna(subset=['Equipo Rival'])
     df_nuevo = df_nuevo[~df_nuevo['Equipo Rival'].astype(str).str.strip().isin(['nan', 'None', ''])]
-    
     try:
-        # El método update requiere que la Service Account sea Editora en el Sheet
         conn.update(worksheet="Resultados", data=df_nuevo)
         st.cache_data.clear() 
         st.success("✅ ¡Sincronizado con Google Sheets!")
     except Exception as e:
         st.error(f"Error de permisos: {e}")
-        st.info("Asegúrate de haber añadido el correo gsheets-connection@streamlit.iam.gserviceaccount.com como EDITOR.")
 
 def obtener_icono_resultado(resultado):
     res_str = str(resultado)
@@ -84,34 +76,6 @@ def procesar_marcador(favor, contra, so_ganador):
     else:
         return (2, "Empate (G-SO)") if so_ganador == "Cuervos" else (1, "Empate (P-SO)")
 
-def generar_excel(df_reg):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_reg.to_excel(writer, index=False, sheet_name='Fase Regular')
-    return output.getvalue()
-
-def generar_pdf(df_reg):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, txt="Reporte Cuervos - Fase Regular", ln=True, align='C')
-    pdf.ln(10)
-    pdf.set_font("Arial", "B", 10)
-    cols, anchos = ['Jornada', 'Equipo Rival', 'GF', 'GC', 'Resultado', 'Pts'], [20, 60, 20, 20, 40, 20]
-    for i, col in enumerate(cols): 
-        pdf.cell(anchos[i], 10, col, border=1, align='C')
-    pdf.ln()
-    pdf.set_font("Arial", "", 10)
-    for _, row in df_reg.iterrows():
-        pdf.cell(anchos[0], 10, str(row.get('Jornada', '')), border=1, align='C')
-        pdf.cell(anchos[1], 10, str(row.get('Equipo Rival', ''))[:25], border=1, align='C')
-        pdf.cell(anchos[2], 10, str(row.get('Goles a Favor', '')), border=1, align='C')
-        pdf.cell(anchos[3], 10, str(row.get('Goles en Contra', '')), border=1, align='C')
-        pdf.cell(anchos[4], 10, str(row.get('Resultado', '')), border=1, align='C')
-        pdf.cell(anchos[5], 10, str(row.get('Puntos', '')), border=1, align='C')
-        pdf.ln()
-    return pdf.output(dest='S').encode('latin-1')
-
 # --- FLUJO PRINCIPAL ---
 df = cargar_datos_cloud()
 
@@ -129,7 +93,7 @@ col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.markdown("<h1 style='text-align: center;'>Gestor de Temporada: Cuervos</h1>", unsafe_allow_html=True)
 
-# Totales
+# Dashboard
 df_reg_stats = df[df["Fase"] == "Regular"]
 pts_reg = int(df_reg_stats["Puntos"].sum()) if not df_reg_stats.empty else 0
 df_j = df_reg_stats[~df_reg_stats["Resultado"].astype(str).str.contains("Pendiente")]
@@ -150,17 +114,14 @@ st.divider()
 col_f, col_h = st.columns([2, 3])
 
 with col_f:
-    estado = st.session_state.estado_torneo
-    if estado == "Regular":
+    if st.session_state.estado_torneo == "Regular":
         st.subheader("Registrar Partido")
         suffix = st.session_state.contador_form
         max_j = pd.to_numeric(df_reg_stats["Jornada"], errors='coerce').max()
         next_j = int(max_j) + 1 if pd.notna(max_j) else 1
-        
         st.number_input("Jornada", value=next_j, disabled=True, key=f"j_{suffix}")
         rival = st.text_input("Equipo Rival", key=f"r_{suffix}")
         es_pend = st.checkbox("⏳ Pendiente", key=f"p_{suffix}")
-        
         g_f, g_c, g_so = 0, 0, None
         if not es_pend:
             cx, cy = st.columns(2)
@@ -182,7 +143,6 @@ with col_h:
     t1, t2 = st.tabs(["Fase Regular", "Liguilla"])
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono_resultado)
-
     with t1:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
         df_ed = st.data_editor(df_rv, height=400, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"Fase": None})
