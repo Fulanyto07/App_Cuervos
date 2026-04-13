@@ -3,21 +3,22 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from PIL import Image
 import os
+import json
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Gestor Cuervos Cloud", page_icon="🐦‍⬛", layout="wide")
 
-# 2. Conexión a Google Sheets con Sistema Anticaídas
+# 2. Conexión a Google Sheets (BYPASS AL SISTEMA DE SECRETS)
 try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    # 2.1 Cargar credenciales crudas del JSON
+    creds_dict = json.loads(st.secrets["google_credentials"])
+    url_hoja = "https://docs.google.com/spreadsheets/d/1PZrC5RN-l6k6VSxtfA2aR1gGKRxASGa4cX5p9QLt4_A/edit?usp=sharing"
+    
+    # 2.2 Conectar forzando los parámetros directos
+    conn = st.connection("gsheets", type=GSheetsConnection, spreadsheet=url_hoja, **creds_dict)
 except Exception as e:
-    st.error("🚨 Error bloqueando la conexión a Google Sheets")
-    st.write("🔍 **Diagnóstico de Secrets detectados:**")
-    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-        st.code(list(st.secrets["connections"]["gsheets"].keys()), language="python")
-        st.info("Si no ves 'token_uri' o 'client_email' en esta lista, hay un salto de línea invisible rompiendo tus Secrets.")
-    else:
-        st.warning("No se detectó el encabezado [connections.gsheets].")
+    st.error("🚨 Error crítico al leer el JSON de Google.")
+    st.write(f"Detalle técnico: {e}")
     st.stop()
 
 # 3. Estado de la sesión
