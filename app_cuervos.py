@@ -29,6 +29,8 @@ if 'contador_form' not in st.session_state:
     st.session_state.contador_form = 0
 if 'estado_torneo' not in st.session_state:
     st.session_state.estado_torneo = "Regular"
+if 'torneo_finalizado' not in st.session_state:
+    st.session_state.torneo_finalizado = False
 
 def limpiar_formulario():
     st.session_state.contador_form += 1
@@ -45,13 +47,11 @@ def cargar_datos():
         return pd.DataFrame(columns=["id", "Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
 
 def guardar_correcciones(df_completo):
-    # Esta función limpia la tabla y sube todo el dataframe corregido
     df_completo = df_completo.dropna(subset=['Equipo Rival'])
     if "id" in df_completo.columns:
         df_completo = df_completo.drop(columns=["id"])
     
     try:
-        # Borrar todo (neq id 0 borra todo) y reinsertar
         supabase.table("resultados").delete().neq("id", 0).execute()
         records = df_completo.to_dict(orient="records")
         if records:
@@ -77,24 +77,43 @@ def obtener_icono(res):
 def limpiar_icono(res):
     return str(res).replace("✅ ", "").replace("➖ ", "").replace("❌ ", "").replace("⏳ ", "")
 
-def generar_excel(df_reg):
+def generar_excel(df_reg, stats):
     output = io.BytesIO()
+    # Quitar columna Fase si existe
+    if "Fase" in df_reg.columns:
+        df_reg = df_reg.drop(columns=["Fase"])
+        
+    # Crear dataframe para el resumen
+    df_stats = pd.DataFrame([stats])
+    
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_reg.to_excel(writer, index=False, sheet_name='Fase Regular')
+        df_stats.to_excel(writer, index=False, sheet_name='Fase Regular', startrow=0)
+        df_reg.to_excel(writer, index=False, sheet_name='Fase Regular', startrow=3)
     return output.getvalue()
 
-def generar_pdf(df_reg):
+def generar_pdf(df_reg, stats):
     pdf = FPDF()
     pdf.add_page()
+    
+    # Título
     pdf.set_font("Arial", "B", 16)
     pdf.cell(200, 10, txt="Reporte Cuervos - Fase Regular", ln=True, align='C')
-    pdf.ln(10)
+    pdf.ln(2)
+    
+    # Encabezados de Estadísticas
+    pdf.set_font("Arial", "B", 11)
+    stats_texto = f"PTS: {stats['PTS']} | J.J: {stats['JJ']} | J.G: {stats['JG']} | J.E: {stats['JE']} | J.P: {stats['JP']} | G.F: {stats['GF']} | G.C: {stats['GC']}"
+    pdf.cell(200, 10, txt=stats_texto, ln=True, align='C')
+    pdf.ln(5)
+    
+    # Tabla
     pdf.set_font("Arial", "B", 10)
     cols, anchos = ['Jornada', 'Equipo Rival', 'GF', 'GC', 'Resultado', 'Pts'], [20, 60, 20, 20, 40, 20]
     for i, col in enumerate(cols): 
         pdf.cell(anchos[i], 10, col, border=1, align='C')
     pdf.ln()
     pdf.set_font("Arial", "", 10)
+    
     for _, row in df_reg.iterrows():
         pdf.cell(anchos[0], 10, str(row.get('Jornada', '')), border=1, align='C')
         pdf.cell(anchos[1], 10, str(row.get('Equipo Rival', ''))[:25], border=1, align='C')
@@ -103,6 +122,7 @@ def generar_pdf(df_reg):
         pdf.cell(anchos[4], 10, str(row.get('Resultado', '')), border=1, align='C')
         pdf.cell(anchos[5], 10, str(row.get('Puntos', '')), border=1, align='C')
         pdf.ln()
+        
     return pdf.output(dest='S').encode('latin-1')
 
 # --- FLUJO PRINCIPAL ---
@@ -115,35 +135,51 @@ with st.sidebar:
     st.header("⚙️ Menú Admin")
     fases = ["Regular", "Cuartos", "Semifinal", "Final", "Eliminado", "Campeon"]
     st.session_state.estado_torneo = st.selectbox("Fase Actual:", fases, index=fases.index(st.session_state.estado_torneo))
+    
+    st.divider()
+    
+    # Botón de Finalizar Torneo
+    if st.button("🏁 Finalizar Torneo", type="primary", use_container_width=True):
+        st.balloons()
+        st.session_state.torneo_finalizado = True
+    
+    if st.session_state.torneo_finalizado:
+        st.success("🏆 ¡Temporada Finalizada! Excelentes resultados, Cuervos.")
+        
     st.divider()
     if st.button("🔄 Refrescar Datos (Forzar)"):
         st.cache_data.clear()
         st.rerun()
 
-# Interfaz Header (Exactamente como la captura)
+# Interfaz Header
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.markdown("<h1 style='text-align: center;'>Gestor de Temporada: Cuervos</h1>", unsafe_allow_html=True)
 
+# Cálculos del Dashboard
 df_reg = df[df["Fase"] == "Regular"]
 pts = int(df_reg["Puntos"].sum()) if not df_reg.empty else 0
 df_j = df_reg[~df_reg["Resultado"].astype(str).str.contains("Pendiente", na=False)]
-jj = len(df_j)
-jg = len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria")])
-je = len(df_j[df_j["Resultado"].astype(str).str.contains("Empate")])
-jp = len(df_j[df_j["Resultado"].astype(str).str.contains("Derrota")])
-gf = int(df_j["Goles a Favor"].sum()) if not df_j.empty else 0
-gc = int(df_j["Goles en Contra"].sum()) if not df_j.empty else 0
+
+stats_dict = {
+    "JJ": len(df_j),
+    "JG": len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria")]),
+    "JE": len(df_j[df_j["Resultado"].astype(str).str.contains("Empate")]),
+    "JP": len(df_j[df_j["Resultado"].astype(str).str.contains("Derrota")]),
+    "GF": int(df_j["Goles a Favor"].sum()) if not df_j.empty else 0,
+    "GC": int(df_j["Goles en Contra"].sum()) if not df_j.empty else 0,
+    "PTS": pts
+}
 
 c_pts, c_stats = st.columns([1, 3])
-c_pts.metric("Puntos", f"{pts} pts")
+c_pts.metric("Puntos", f"{stats_dict['PTS']} pts")
 c_stats.markdown(f"""<div style='display:flex; justify-content:space-around; padding-top:20px;'>
-    <div style='text-align:center;'><small>J.J</small><br><b>{jj}</b></div>
-    <div style='text-align:center;'><small>J.G</small><br><b>{jg}</b></div>
-    <div style='text-align:center;'><small>J.E</small><br><b>{je}</b></div>
-    <div style='text-align:center;'><small>J.P</small><br><b>{jp}</b></div>
-    <div style='text-align:center;'><small>G.F</small><br><b>{gf}</b></div>
-    <div style='text-align:center;'><small>G.C</small><br><b>{gc}</b></div></div>""", unsafe_allow_html=True)
+    <div style='text-align:center;'><small>J.J</small><br><b>{stats_dict['JJ']}</b></div>
+    <div style='text-align:center;'><small>J.G</small><br><b>{stats_dict['JG']}</b></div>
+    <div style='text-align:center;'><small>J.E</small><br><b>{stats_dict['JE']}</b></div>
+    <div style='text-align:center;'><small>J.P</small><br><b>{stats_dict['JP']}</b></div>
+    <div style='text-align:center;'><small>G.F</small><br><b>{stats_dict['GF']}</b></div>
+    <div style='text-align:center;'><small>G.C</small><br><b>{stats_dict['GC']}</b></div></div>""", unsafe_allow_html=True)
 st.divider()
 
 col_f, col_h = st.columns([2, 3])
@@ -176,7 +212,6 @@ with col_f:
                 nuevo_partido = {"Jornada": next_j, "Fase": "Regular", "Equipo Rival": rival.strip(), 
                                  "Goles a Favor": gf_i, "Goles en Contra": gc_i, "Resultado": r, "Puntos": p}
                 
-                # Insertar directo en Supabase
                 try:
                     supabase.table("resultados").insert(nuevo_partido).execute()
                     limpiar_formulario()
@@ -195,7 +230,6 @@ with col_h:
         
     with t1:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
-        # Ocultar ID y Fase en la interfaz
         columnas_ocultas = {"id": None, "Fase": None}
         df_ed = st.data_editor(df_rv, height=400, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config=columnas_ocultas)
         
@@ -212,8 +246,8 @@ with col_h:
         df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono)
         
         if FPDF_DISPONIBLE: 
-            c_p.download_button("📄 PDF", generar_pdf(df_exp), "Cuervos_Reporte.pdf")
-        c_x.download_button("📊 Excel", generar_excel(df_exp), "Cuervos_Reporte.xlsx")
+            c_p.download_button("📄 PDF", generar_pdf(df_exp, stats_dict), "Cuervos_Reporte.pdf")
+        c_x.download_button("📊 Excel", generar_excel(df_exp, stats_dict), "Cuervos_Reporte.xlsx")
 
     with t2:
         df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
