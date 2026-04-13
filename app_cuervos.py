@@ -10,24 +10,21 @@ st.set_page_config(page_title="Gestor Cuervos Cloud", page_icon="🐦‍⬛", la
 # 2. Conexión a Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. Estado de la sesión para el formulario
+# 3. Estado de la sesión
 if 'contador_form' not in st.session_state:
     st.session_state.contador_form = 0
-
 if 'estado_torneo' not in st.session_state:
     st.session_state.estado_torneo = "Regular"
 
 def cargar_datos():
     try:
-        # ttl=0 obliga a la app a leer siempre lo más nuevo de Google Sheets
         df_cloud = conn.read(worksheet="Resultados", ttl=0)
         if df_cloud is None or df_cloud.empty:
             return pd.DataFrame(columns=["Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
         
-        # Limpieza y formato de números
         df_cloud = df_cloud.dropna(subset=['Equipo Rival'])
-        columnas_num = ["Jornada", "Puntos", "Goles a Favor", "Goles en Contra"]
-        for col in columnas_num:
+        # Limpieza de formatos numéricos
+        for col in ["Jornada", "Puntos", "Goles a Favor", "Goles en Contra"]:
             if col in df_cloud.columns:
                 df_cloud[col] = pd.to_numeric(df_cloud[col], errors='coerce').fillna(0).astype(int)
         return df_cloud
@@ -41,13 +38,12 @@ def guardar_datos(df_nuevo):
         st.cache_data.clear() 
         st.success("✅ ¡Actualizado en Google Sheets!")
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"Error al guardar: {e}")
 
 def procesar_marcador(favor, contra, so_ganador):
     if favor > contra: return 3, "Victoria"
     elif favor < contra: return 0, "Derrota"
-    else:
-        return (2, "Empate (G-SO)") if so_ganador == "Cuervos" else (1, "Empate (P-SO)")
+    else: return (2, "Empate (G-SO)") if so_ganador == "Cuervos" else (1, "Empate (P-SO)")
 
 def obtener_icono(res):
     res_s = str(res)
@@ -66,7 +62,7 @@ with st.sidebar:
     st.header("⚙️ Admin")
     fases = ["Regular", "Cuartos", "Semifinal", "Final", "Eliminado", "Campeon"]
     st.session_state.estado_torneo = st.selectbox("Fase Actual:", fases, index=fases.index(st.session_state.estado_torneo))
-    if st.button("🔄 Forzar Recarga"):
+    if st.button("🔄 Recargar Datos"):
         st.cache_data.clear()
         st.rerun()
 
@@ -78,7 +74,7 @@ jj = len(df_reg[~df_reg["Resultado"].astype(str).str.contains("Pendiente")])
 
 c1, c2 = st.columns([1, 4])
 c1.metric("Puntos", f"{pts} pts")
-c2.write(f"Partidos jugados en temporada: {jj}")
+c2.write(f"Partidos jugados: {jj}")
 st.divider()
 
 col_f, col_h = st.columns([2, 3])
@@ -116,4 +112,4 @@ with col_h:
     if not df.empty:
         df_ver = df.copy()
         df_ver["Resultado"] = df_ver["Resultado"].apply(obtener_icono)
-        st.data_editor(df_ver[df_ver["Fase"]=="Regular"], use_container_width=True, hide_index=True, column_config={"Fase": None})
+        st.data_editor(df_ver[df_ver["Fase"]=="Regular"], width="stretch", hide_index=True, column_config={"Fase": None})
