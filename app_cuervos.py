@@ -54,7 +54,7 @@ def guardar_correcciones(df_original, df_modificado):
     
     ids_orig = set(df_original['id'].dropna())
     
-    # Extraer IDs válidos (ignorar strings basura si Streamlit crea filas nuevas)
+    # Extraer IDs válidos
     ids_mod = []
     for val in df_modificado['id']:
         if pd.notna(val) and not isinstance(val, str):
@@ -72,7 +72,6 @@ def guardar_correcciones(df_original, df_modificado):
             rec = row.to_dict()
             id_val = rec.get('id')
             
-            # Si el ID es nuevo o es un texto raro de Streamlit, dejar que Supabase lo genere
             if pd.isna(id_val) or isinstance(id_val, str): 
                 rec.pop('id', None)
             else:
@@ -189,6 +188,9 @@ elif st.session_state.override_cierre:
 else:
     if st.session_state.clasifico_liguilla:
         st.session_state.estado_torneo = "Cuartos"
+    # 🚨 AQUÍ ESTÁ LA REPARACIÓN: Si ya terminó y no hay liguilla, están Eliminados
+    elif st.session_state.temporada_terminada:
+        st.session_state.estado_torneo = "Eliminado"
     else:
         st.session_state.estado_torneo = "Regular"
 
@@ -368,10 +370,11 @@ with col_h:
         t_reg, = st.tabs(["⚽ Fase Regular"])
         t_lig = None
 
+    cols_reg = ["Jornada", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"]
+    
     with t_reg:
         df_rv = df_v[df_v["Fase"] == "Regular"].copy()
         
-        # EL TRUCO MAESTRO: Escondemos el ID en el índice de Pandas para que la tabla no se rompa
         if not df_rv.empty: df_rv = df_rv.set_index("id")
         
         ed_reg = st.data_editor(
@@ -383,7 +386,7 @@ with col_h:
         )
         
         if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
-            ed_reg = ed_reg.reset_index() # Rescatamos el ID oculto
+            ed_reg = ed_reg.reset_index() 
             ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
             ed_reg['Fase'] = "Regular"
             pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
@@ -401,10 +404,10 @@ with col_h:
         c_x.download_button("📊 Excel", generar_excel(df_exp, stats_dict), "Cuervos_Reporte.xlsx")
 
     if t_lig:
+        cols_lig = ["Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado"]
         with t_lig:
             df_lv = df_v[df_v["Fase"] != "Regular"].copy()
             
-            # Repetimos la magia para la Liguilla
             if not df_lv.empty: df_lv = df_lv.set_index("id")
             
             ed_lig = st.data_editor(
@@ -419,7 +422,7 @@ with col_h:
             )
             
             if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
-                ed_lig = ed_lig.reset_index() # Rescatamos el ID oculto
+                ed_lig = ed_lig.reset_index() 
                 ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
                 pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
                 guardar_correcciones(df, pd_final_lig)
