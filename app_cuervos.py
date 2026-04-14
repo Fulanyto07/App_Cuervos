@@ -77,7 +77,7 @@ def reiniciar_sistema():
     try:
         res = supabase.table("resultados").select("id").execute()
         for r in res.data:
-            supabase.table("resultados").delete().eq("id", r["id"]).execute()
+            supabase.table("resultados").delete().eq("id", r r["id"]).execute()
             
         st.session_state.update({
             "estado_torneo": "Regular",
@@ -146,17 +146,23 @@ def generar_pdf(df_reg, stats):
 # --- FLUJO PRINCIPAL ---
 df = cargar_datos()
 
+# 🚨 REPARACIÓN DEFINITIVA DEL ESTADO AUTOMÁTICO 🚨
 if not df.empty:
+    # Si hay partidos de Liguilla en la BD, forzosamente estamos en Liguilla
+    if not df[df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])].empty:
+        st.session_state.clasifico_liguilla = True
+        st.session_state.temporada_terminada = True
+
     if ((df['Fase'] == 'Final') & (df['Resultado'].str.contains('Victoria|G-SO'))).any():
         st.session_state.estado_torneo = "Campeon"
         st.session_state.temporada_terminada = True
-        st.session_state.clasifico_liguilla = True
     elif ((df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])) & (df['Resultado'].str.contains('Derrota|P-SO'))).any():
         st.session_state.estado_torneo = "Eliminado"
         st.session_state.temporada_terminada = True
     elif st.session_state.clasifico_liguilla:
         if not df[df['Fase'] == 'Semifinal'].empty: st.session_state.estado_torneo = "Final"
         elif not df[df['Fase'] == 'Cuartos'].empty: st.session_state.estado_torneo = "Semifinal"
+        else: st.session_state.estado_torneo = "Cuartos"
 
 with st.sidebar:
     if os.path.exists("cuervos_logo.png"): st.image(Image.open("cuervos_logo.png"), width=120)
@@ -184,7 +190,13 @@ with st.sidebar:
             st.error("❌ Torneo Finalizado")
         
         if st.button("⏪ Deshacer Cierre", use_container_width=True):
-            st.session_state.update({"temporada_terminada": False, "clasifico_liguilla": False, "estado_torneo": "Regular"})
+            # 🚨 AQUÍ SE APAGA LA PREGUNTA TRABADA 🚨
+            st.session_state.update({
+                "temporada_terminada": False, 
+                "clasifico_liguilla": False, 
+                "estado_torneo": "Regular",
+                "preguntar_clasificacion": False 
+            })
             limpiar_formulario()
             st.rerun()
 
@@ -310,10 +322,8 @@ with col_h:
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
 
-    # REPARACIÓN: Rompemos la memoria caché de Streamlit con un espacio en blanco
     if st.session_state.clasifico_liguilla:
         if st.session_state.estado_torneo != "Regular":
-            # El espacio en "Fase Regular " hace que Streamlit la vea como nueva y fuerce la vista en Liguilla
             t_lig, t_reg = st.tabs(["🏆 Liguilla", "⚽ Fase Regular "])
         else:
             t_reg, t_lig = st.tabs(["⚽ Fase Regular", "🏆 Liguilla"])
