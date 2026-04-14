@@ -53,7 +53,14 @@ def guardar_correcciones(df_original, df_modificado):
     df_modificado = df_modificado.dropna(subset=['Equipo Rival'])
     
     ids_orig = set(df_original['id'].dropna())
-    ids_mod = set(df_modificado['id'].dropna())
+    
+    # Extraer IDs válidos (ignorar strings basura si Streamlit crea filas nuevas)
+    ids_mod = []
+    for val in df_modificado['id']:
+        if pd.notna(val) and not isinstance(val, str):
+            ids_mod.append(val)
+    ids_mod = set(ids_mod)
+    
     ids_a_borrar = ids_orig - ids_mod
     
     try:
@@ -63,8 +70,13 @@ def guardar_correcciones(df_original, df_modificado):
         records = []
         for _, row in df_modificado.iterrows():
             rec = row.to_dict()
-            if pd.isna(rec.get('id')): 
+            id_val = rec.get('id')
+            
+            # Si el ID es nuevo o es un texto raro de Streamlit, dejar que Supabase lo genere
+            if pd.isna(id_val) or isinstance(id_val, str): 
                 rec.pop('id', None)
+            else:
+                rec['id'] = int(id_val)
             
             clean_rec = {}
             for k, v in rec.items():
@@ -237,7 +249,6 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Danger Zone")
-    # 🚨 REPARACIÓN AQUÍ: LLAVE DINÁMICA PARA FORZAR AMNESIA EN EL CHECKBOX 🚨
     confirma = st.checkbox("Confirmar reinicio de temporada", key=f"reset_{st.session_state.contador_form}")
     if st.button("♻️ Nueva Temporada", type="secondary", disabled=not confirma, use_container_width=True):
         reiniciar_sistema()
@@ -357,13 +368,22 @@ with col_h:
         t_reg, = st.tabs(["⚽ Fase Regular"])
         t_lig = None
 
-    cols_reg = ["Jornada", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"]
-    
     with t_reg:
-        df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
-        ed_reg = st.data_editor(df_rv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_order=cols_reg)
+        df_rv = df_v[df_v["Fase"] == "Regular"].copy()
+        
+        # EL TRUCO MAESTRO: Escondemos el ID en el índice de Pandas para que la tabla no se rompa
+        if not df_rv.empty: df_rv = df_rv.set_index("id")
+        
+        ed_reg = st.data_editor(
+            df_rv, 
+            use_container_width=True, 
+            num_rows="dynamic", 
+            key="ed_r",
+            column_config={"Fase": st.column_config.TextColumn(disabled=True)}
+        )
         
         if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
+            ed_reg = ed_reg.reset_index() # Rescatamos el ID oculto
             ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
             ed_reg['Fase'] = "Regular"
             pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
@@ -371,15 +391,36 @@ with col_h:
             st.rerun()
 
         c_p, c_x = st.columns(2)
-        df_exp = ed_reg.copy()
-        df_exp = df_exp.drop(columns=["id", "Fase"], errors="ignore")
-        df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono)
+        df_exp = ed_reg.copy().reset_index()
+        df_exp = df_exp.drop(columns=["id", "Fase", "index"], errors="ignore")
+        if "Resultado" in df_exp.columns:
+            df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono)
         
         if FPDF_DISPONIBLE: 
             c_p.download_button("📄 PDF", generar_pdf(df_exp, stats_dict), "Cuervos_Reporte.pdf")
         c_x.download_button("📊 Excel", generar_excel(df_exp, stats_dict), "Cuervos_Reporte.xlsx")
 
     if t_lig:
-        cols_lig = ["Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado"]
         with t_lig:
-            df_lv = df
+            df_lv = df_v[df_v["Fase"] != "Regular"].copy()
+            
+            # Repetimos la magia para la Liguilla
+            if not df_lv.empty: df_lv = df_lv.set_index("id")
+            
+            ed_lig = st.data_editor(
+                df_lv, 
+                use_container_width=True, 
+                num_rows="dynamic", 
+                key="ed_l",
+                column_config={
+                    "Jornada": st.column_config.NumberColumn(disabled=True),
+                    "Puntos": st.column_config.NumberColumn(disabled=True)
+                }
+            )
+            
+            if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
+                ed_lig = ed_lig.reset_index() # Rescatamos el ID oculto
+                ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
+                pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
+                guardar_correcciones(df, pd_final_lig)
+                st.rerun()
