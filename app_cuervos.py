@@ -85,6 +85,7 @@ def reiniciar_sistema():
             "clasifico_liguilla": False,
             "preguntar_clasificacion": False
         })
+        limpiar_formulario()
         st.cache_data.clear()
         st.rerun()
     except Exception as e:
@@ -154,9 +155,6 @@ if not df.empty:
     elif ((df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])) & (df['Resultado'].str.contains('Derrota|P-SO'))).any():
         st.session_state.estado_torneo = "Eliminado"
         st.session_state.temporada_terminada = True
-    elif st.session_state.clasifico_liguilla:
-        if not df[df['Fase'] == 'Semifinal'].empty: st.session_state.estado_torneo = "Final"
-        elif not df[df['Fase'] == 'Cuartos'].empty: st.session_state.estado_torneo = "Semifinal"
 
 with st.sidebar:
     if os.path.exists("cuervos_logo.png"): st.image(Image.open("cuervos_logo.png"), width=120)
@@ -172,6 +170,7 @@ with st.sidebar:
             c1, c2 = st.columns(2)
             if c1.button("SÍ", use_container_width=True):
                 st.session_state.update({"clasifico_liguilla": True, "temporada_terminada": True, "preguntar_clasificacion": False, "estado_torneo": "Cuartos"})
+                limpiar_formulario() # REPARACIÓN 1: Limpia la memoria del Partido # al cerrar
                 st.balloons(); st.rerun()
             if c2.button("NO", use_container_width=True):
                 st.session_state.update({"clasifico_liguilla": False, "temporada_terminada": True, "preguntar_clasificacion": False, "estado_torneo": "Eliminado"})
@@ -184,6 +183,7 @@ with st.sidebar:
         
         if st.button("⏪ Deshacer Cierre", use_container_width=True):
             st.session_state.update({"temporada_terminada": False, "clasifico_liguilla": False, "estado_torneo": "Regular"})
+            limpiar_formulario()
             st.rerun()
 
     st.divider()
@@ -235,7 +235,6 @@ with col_f:
         st.subheader(f"Registrar Partido - {fase}")
         suffix = st.session_state.contador_form
         
-        # 🚨 REPARACIÓN 1: Aislar completamente por fase para evitar cruces
         df_fase = df[df["Fase"] == fase]
         df_pend = df_fase[df_fase["Resultado"].astype(str).str.contains("Pendiente", na=False)]
         
@@ -253,9 +252,7 @@ with col_f:
             opciones = df_pend["Jornada"].astype(str) + " - " + df_pend["Equipo Rival"]
             sel = st.selectbox("Seleccionar partido a actualizar:", opciones.tolist(), key=f"s_{suffix}")
             
-            # 🚨 REPARACIÓN 2: Lógica blindada sin .iloc numérico propenso a fallos
             match_row = df_pend[opciones == sel]
-            
             if not match_row.empty:
                 row = match_row.iloc[0]
                 id_upd = row["id"]
@@ -311,13 +308,11 @@ with col_h:
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
 
+    # REPARACIÓN 2: Renombrar para forzar el auto-focus a la primera pestaña
     if st.session_state.clasifico_liguilla:
-        if st.session_state.estado_torneo != "Regular":
-            t_lig, t_reg = st.tabs(["Liguilla", "Fase Regular"])
-        else:
-            t_reg, t_lig = st.tabs(["Fase Regular", "Liguilla"])
+        t_lig, t_reg = st.tabs(["🏆 Liguilla", "⚽ Fase Regular"])
     else:
-        t_reg, = st.tabs(["Fase Regular"])
+        t_reg, = st.tabs(["⚽ Fase Regular"])
         t_lig = None
 
     with t_reg:
