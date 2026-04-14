@@ -85,7 +85,6 @@ def reiniciar_sistema():
             "clasifico_liguilla": False,
             "preguntar_clasificacion": False
         })
-        limpiar_formulario()
         st.cache_data.clear()
         st.rerun()
     except Exception as e:
@@ -155,6 +154,9 @@ if not df.empty:
     elif ((df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])) & (df['Resultado'].str.contains('Derrota|P-SO'))).any():
         st.session_state.estado_torneo = "Eliminado"
         st.session_state.temporada_terminada = True
+    elif st.session_state.clasifico_liguilla:
+        if not df[df['Fase'] == 'Semifinal'].empty: st.session_state.estado_torneo = "Final"
+        elif not df[df['Fase'] == 'Cuartos'].empty: st.session_state.estado_torneo = "Semifinal"
 
 with st.sidebar:
     if os.path.exists("cuervos_logo.png"): st.image(Image.open("cuervos_logo.png"), width=120)
@@ -170,7 +172,7 @@ with st.sidebar:
             c1, c2 = st.columns(2)
             if c1.button("SÍ", use_container_width=True):
                 st.session_state.update({"clasifico_liguilla": True, "temporada_terminada": True, "preguntar_clasificacion": False, "estado_torneo": "Cuartos"})
-                limpiar_formulario() # REPARACIÓN 1: Limpia la memoria del Partido # al cerrar
+                limpiar_formulario()
                 st.balloons(); st.rerun()
             if c2.button("NO", use_container_width=True):
                 st.session_state.update({"clasifico_liguilla": False, "temporada_terminada": True, "preguntar_clasificacion": False, "estado_torneo": "Eliminado"})
@@ -308,9 +310,13 @@ with col_h:
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
 
-    # REPARACIÓN 2: Renombrar para forzar el auto-focus a la primera pestaña
+    # REPARACIÓN: Rompemos la memoria caché de Streamlit con un espacio en blanco
     if st.session_state.clasifico_liguilla:
-        t_lig, t_reg = st.tabs(["🏆 Liguilla", "⚽ Fase Regular"])
+        if st.session_state.estado_torneo != "Regular":
+            # El espacio en "Fase Regular " hace que Streamlit la vea como nueva y fuerce la vista en Liguilla
+            t_lig, t_reg = st.tabs(["🏆 Liguilla", "⚽ Fase Regular "])
+        else:
+            t_reg, t_lig = st.tabs(["⚽ Fase Regular", "🏆 Liguilla"])
     else:
         t_reg, = st.tabs(["⚽ Fase Regular"])
         t_lig = None
