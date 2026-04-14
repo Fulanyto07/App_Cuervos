@@ -205,13 +205,26 @@ if st.session_state.estado_torneo == "Campeon":
 df_reg = df[df["Fase"] == "Regular"]
 df_j = df_reg[~df_reg["Resultado"].astype(str).str.contains("Pendiente", na=False)]
 
-pts_totales = int(pd.to_numeric(df_reg["Puntos"], errors='coerce').fillna(0).sum())
-
-stats = {"JJ": len(df_j), "JG": len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria", na=False)]), "PTS": pts_totales}
+# El blindaje de NaN alimenta los stats originales
+stats_dict = {
+    "JJ": len(df_j),
+    "JG": len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria", na=False)]),
+    "JE": len(df_j[df_j["Resultado"].astype(str).str.contains("Empate", na=False)]),
+    "JP": len(df_j[df_j["Resultado"].astype(str).str.contains("Derrota", na=False)]),
+    "GF": int(pd.to_numeric(df_j["Goles a Favor"], errors='coerce').fillna(0).sum()),
+    "GC": int(pd.to_numeric(df_j["Goles en Contra"], errors='coerce').fillna(0).sum()),
+    "PTS": int(pd.to_numeric(df_reg["Puntos"], errors='coerce').fillna(0).sum())
+}
 
 c_pts, c_stats = st.columns([1, 3])
-c_pts.metric("Puntos", f"{stats['PTS']} pts")
-c_stats.write(f"Partidos Jugados: {stats['JJ']} | Victorias: {stats['JG']}")
+c_pts.metric("Puntos", f"{stats_dict['PTS']} pts")
+c_stats.markdown(f"""<div style='display:flex; justify-content:space-around; padding-top:20px;'>
+    <div style='text-align:center;'><small>J.J</small><br><b>{stats_dict['JJ']}</b></div>
+    <div style='text-align:center;'><small>J.G</small><br><b>{stats_dict['JG']}</b></div>
+    <div style='text-align:center;'><small>J.E</small><br><b>{stats_dict['JE']}</b></div>
+    <div style='text-align:center;'><small>J.P</small><br><b>{stats_dict['JP']}</b></div>
+    <div style='text-align:center;'><small>G.F</small><br><b>{stats_dict['GF']}</b></div>
+    <div style='text-align:center;'><small>G.C</small><br><b>{stats_dict['GC']}</b></div></div>""", unsafe_allow_html=True)
 st.divider()
 
 col_f, col_h = st.columns([2, 3])
@@ -220,7 +233,7 @@ col_f, col_h = st.columns([2, 3])
 with col_f:
     fase = st.session_state.estado_torneo
     if fase in ["Regular", "Cuartos", "Semifinal", "Final"]:
-        st.subheader(f"Registrar Partido - {fase}")
+        st.subheader(f"Registro - {fase}")
         suffix = st.session_state.contador_form
         df_pend = df[df["Resultado"].astype(str).str.contains("Pendiente", na=False)]
         modo = st.radio("Acción:", ["Nuevo Partido", "Actualizar Pendiente"], horizontal=True, key=f"m_{suffix}") if not df_pend.empty else "Nuevo Partido"
@@ -255,6 +268,7 @@ with col_f:
 
         txt_boton = "Guardar Partido" if modo == "Nuevo Partido" else "Actualizar Marcador"
 
+        # Aquí quitamos el ancho completo para que regrese a su tamaño original pequeño
         if st.button(txt_boton, type="primary"):
             if rival.strip():
                 p, r = (0, "Pendiente") if pnd else procesar_marcador(gf, gc, so)
@@ -281,24 +295,11 @@ with col_f:
 
 # --- Columna Derecha: Tablas ---
 with col_h:
-    st.markdown("💡 *Doble clic para corregir marcador manual. Suprimir para borrar fila.*")
+    st.markdown("💡 *Doble clic para editar. Para borrar, selecciona fila y presiona Suprimir.*")
     tabs = st.tabs(["Fase Regular", "Liguilla"]) if st.session_state.clasifico_liguilla else st.tabs(["Fase Regular"])
     
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
-    
-    df_reg_reporte = df[df["Fase"] == "Regular"].copy()
-    df_j_reporte = df_reg_reporte[~df_reg_reporte["Resultado"].astype(str).str.contains("Pendiente", na=False)]
-    
-    stats_dict = {
-        "JJ": len(df_j_reporte),
-        "JG": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Victoria", na=False)]),
-        "JE": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Empate", na=False)]),
-        "JP": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Derrota", na=False)]),
-        "GF": int(pd.to_numeric(df_j_reporte["Goles a Favor"], errors='coerce').fillna(0).sum()),
-        "GC": int(pd.to_numeric(df_j_reporte["Goles en Contra"], errors='coerce').fillna(0).sum()),
-        "PTS": int(pd.to_numeric(df_reg_reporte["Puntos"], errors='coerce').fillna(0).sum())
-    }
 
     with tabs[0]:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
