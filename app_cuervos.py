@@ -77,7 +77,7 @@ def reiniciar_sistema():
     try:
         res = supabase.table("resultados").select("id").execute()
         for r in res.data:
-            supabase.table("resultados").delete().eq("id", r r["id"]).execute()
+            supabase.table("resultados").delete().eq("id", r["id"]).execute()
             
         st.session_state.update({
             "estado_torneo": "Regular",
@@ -85,6 +85,7 @@ def reiniciar_sistema():
             "clasifico_liguilla": False,
             "preguntar_clasificacion": False
         })
+        limpiar_formulario()
         st.cache_data.clear()
         st.rerun()
     except Exception as e:
@@ -146,23 +147,29 @@ def generar_pdf(df_reg, stats):
 # --- FLUJO PRINCIPAL ---
 df = cargar_datos()
 
-# 🚨 REPARACIÓN DEFINITIVA DEL ESTADO AUTOMÁTICO 🚨
-if not df.empty:
-    # Si hay partidos de Liguilla en la BD, forzosamente estamos en Liguilla
-    if not df[df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])].empty:
-        st.session_state.clasifico_liguilla = True
-        st.session_state.temporada_terminada = True
+# 🚨 CEREBRO MAESTRO BLINDADO 🚨
+# La Base de Datos dicta la realidad. No más peleas con los botones.
+df_liguilla = df[df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])]
 
-    if ((df['Fase'] == 'Final') & (df['Resultado'].str.contains('Victoria|G-SO'))).any():
+if not df_liguilla.empty:
+    st.session_state.clasifico_liguilla = True
+    st.session_state.temporada_terminada = True
+    st.session_state.preguntar_clasificacion = False
+    
+    if ((df_liguilla['Fase'] == 'Final') & (df_liguilla['Resultado'].str.contains('Victoria|G-SO'))).any():
         st.session_state.estado_torneo = "Campeon"
-        st.session_state.temporada_terminada = True
-    elif ((df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])) & (df['Resultado'].str.contains('Derrota|P-SO'))).any():
+    elif (df_liguilla['Resultado'].str.contains('Derrota|P-SO')).any():
         st.session_state.estado_torneo = "Eliminado"
-        st.session_state.temporada_terminada = True
-    elif st.session_state.clasifico_liguilla:
-        if not df[df['Fase'] == 'Semifinal'].empty: st.session_state.estado_torneo = "Final"
-        elif not df[df['Fase'] == 'Cuartos'].empty: st.session_state.estado_torneo = "Semifinal"
-        else: st.session_state.estado_torneo = "Cuartos"
+    else:
+        if not df_liguilla[df_liguilla['Fase'] == 'Semifinal'].empty:
+            st.session_state.estado_torneo = "Final"
+        elif not df_liguilla[df_liguilla['Fase'] == 'Cuartos'].empty:
+            st.session_state.estado_torneo = "Semifinal"
+else:
+    if st.session_state.clasifico_liguilla:
+        st.session_state.estado_torneo = "Cuartos"
+    else:
+        st.session_state.estado_torneo = "Regular"
 
 with st.sidebar:
     if os.path.exists("cuervos_logo.png"): st.image(Image.open("cuervos_logo.png"), width=120)
@@ -173,6 +180,7 @@ with st.sidebar:
     if not st.session_state.temporada_terminada:
         if st.button("🔒 Cerrar Fase Regular", type="primary", use_container_width=True):
             st.session_state.preguntar_clasificacion = True
+        
         if st.session_state.preguntar_clasificacion:
             st.warning("¿Clasificaron a Liguilla?")
             c1, c2 = st.columns(2)
@@ -188,17 +196,17 @@ with st.sidebar:
             st.success("🏆 ¡SOMOS CAMPEONES!")
         elif st.session_state.estado_torneo == "Eliminado":
             st.error("❌ Torneo Finalizado")
+        else:
+            st.success("🏆 Liguilla Activa")
         
-        if st.button("⏪ Deshacer Cierre", use_container_width=True):
-            # 🚨 AQUÍ SE APAGA LA PREGUNTA TRABADA 🚨
-            st.session_state.update({
-                "temporada_terminada": False, 
-                "clasifico_liguilla": False, 
-                "estado_torneo": "Regular",
-                "preguntar_clasificacion": False 
-            })
-            limpiar_formulario()
-            st.rerun()
+        # Bloqueo de seguridad: Si ya hay juegos de Liguilla, escondemos el botón de Deshacer para evitar el Limbo.
+        if df_liguilla.empty:
+            if st.button("⏪ Deshacer Cierre", use_container_width=True):
+                st.session_state.update({"temporada_terminada": False, "clasifico_liguilla": False, "estado_torneo": "Regular", "preguntar_clasificacion": False})
+                limpiar_formulario()
+                st.rerun()
+        else:
+            st.caption("💡 *Edita directamente la tabla para modificar o corregir la Liguilla.*")
 
     st.divider()
     if st.button("🔄 Refrescar Pantalla", use_container_width=True):
@@ -271,93 +279,4 @@ with col_f:
                 row = match_row.iloc[0]
                 id_upd = row["id"]
                 rival = row["Equipo Rival"]
-                num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.notna(row["Jornada"]) else 1
-            else:
-                id_upd = None
-                rival = ""
-                num_p_seguro = 1
-                
-            pnd = False
-            
-            st.number_input("Partido #", value=num_p_seguro, disabled=True, key=f"ju_{id_upd}_{suffix}")
-            st.text_input("Equipo Rival", value=rival, disabled=True, key=f"ru_{id_upd}_{suffix}")
-
-        gf, gc, so = 0, 0, None
-        if not pnd:
-            cx, cy = st.columns(2)
-            gf = cx.number_input("Goles Cuervos", min_value=0, key=f"gf_{suffix}")
-            gc = cy.number_input("Goles Rival", min_value=0, key=f"gc_{suffix}")
-            if gf == gc: so = st.radio("Ganador SO:", ["Cuervos", "Rival"], horizontal=True, key=f"so_{suffix}")
-
-        txt_boton = "Guardar Partido" if modo == "Nuevo Partido" else "Actualizar Marcador"
-
-        if st.button(txt_boton, type="primary"):
-            if rival.strip():
-                p, r = (0, "Pendiente") if pnd else procesar_marcador(gf, gc, so)
-                jornada_guardar = num_p if modo == "Nuevo Partido" else num_p_seguro
-                data = {"Jornada": jornada_guardar, "Fase": fase, "Equipo Rival": rival, "Goles a Favor": gf, "Goles en Contra": gc, "Resultado": r, "Puntos": p}
-                
-                try:
-                    if id_upd: 
-                        supabase.table("resultados").update(data).eq("id", int(id_upd)).execute()
-                    else: 
-                        supabase.table("resultados").insert(data).execute()
-                    
-                    st.cache_data.clear()
-                    limpiar_formulario()
-                    
-                    if not pnd:
-                        if fase == "Cuartos": st.session_state.estado_torneo = "Semifinal"
-                        elif fase == "Semifinal": st.session_state.estado_torneo = "Final"
-                        elif fase == "Final": st.session_state.estado_torneo = "Campeon" if p == 3 or "G-SO" in r else "Eliminado"
-                    
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error con DB: {e}")
-
-# --- Columna Derecha: Tablas ---
-with col_h:
-    st.markdown("💡 *Doble clic para editar. Para borrar, selecciona fila y presiona Suprimir.*")
-    
-    df_v = df.copy()
-    if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
-
-    if st.session_state.clasifico_liguilla:
-        if st.session_state.estado_torneo != "Regular":
-            t_lig, t_reg = st.tabs(["🏆 Liguilla", "⚽ Fase Regular "])
-        else:
-            t_reg, t_lig = st.tabs(["⚽ Fase Regular", "🏆 Liguilla"])
-    else:
-        t_reg, = st.tabs(["⚽ Fase Regular"])
-        t_lig = None
-
-    with t_reg:
-        df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
-        ed_reg = st.data_editor(df_rv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"id": None, "Fase": None})
-        
-        if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
-            ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
-            ed_reg['Fase'] = "Regular"
-            pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
-            guardar_correcciones(df, pd_final)
-            st.rerun()
-
-        c_p, c_x = st.columns(2)
-        df_exp = ed_reg.copy()
-        if "id" in df_exp.columns: df_exp = df_exp.drop(columns=["id"])
-        df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono)
-        
-        if FPDF_DISPONIBLE: 
-            c_p.download_button("📄 PDF", generar_pdf(df_exp, stats_dict), "Cuervos_Reporte.pdf")
-        c_x.download_button("📊 Excel", generar_excel(df_exp, stats_dict), "Cuervos_Reporte.xlsx")
-
-    if t_lig:
-        with t_lig:
-            df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
-            ed_lig = st.data_editor(df_lv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_l", column_config={"id": None, "Jornada": None, "Puntos": None})
-            
-            if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
-                ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
-                pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
-                guardar_correcciones(df, pd_final_lig)
-                st.rerun()
+                num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.not
