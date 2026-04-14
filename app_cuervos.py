@@ -372,7 +372,6 @@ with col_h:
     with t_reg:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
         
-        # 🚨 REPARACIÓN VISUAL: OCULTANDO ID Y FASE
         ed_reg = st.data_editor(
             df_rv, 
             use_container_width=True, 
@@ -406,7 +405,7 @@ with col_h:
         with t_lig:
             df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
             
-            # 🚨 REPARACIÓN VISUAL: OCULTANDO ID, FASE, JORNADA Y PUNTOS EN LIGUILLA
+            # 🚨 CORRECCIÓN: "Fase" se borró de aquí para que vuelva a ser visible 🚨
             ed_lig = st.data_editor(
                 df_lv, 
                 use_container_width=True, 
@@ -415,7 +414,6 @@ with col_h:
                 key="ed_l",
                 column_config={
                     "id": None,
-                    "Fase": None,
                     "Jornada": None,
                     "Puntos": None
                 }
