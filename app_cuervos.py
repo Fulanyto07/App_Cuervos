@@ -205,7 +205,6 @@ if st.session_state.estado_torneo == "Campeon":
 df_reg = df[df["Fase"] == "Regular"]
 df_j = df_reg[~df_reg["Resultado"].astype(str).str.contains("Pendiente", na=False)]
 
-# 🚨 BLINDAJE APLICADO AQUÍ 🚨
 pts_totales = int(pd.to_numeric(df_reg["Puntos"], errors='coerce').fillna(0).sum())
 
 stats = {"JJ": len(df_j), "JG": len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria", na=False)]), "PTS": pts_totales}
@@ -217,10 +216,11 @@ st.divider()
 
 col_f, col_h = st.columns([2, 3])
 
+# --- Columna Izquierda: Formulario ---
 with col_f:
     fase = st.session_state.estado_torneo
     if fase in ["Regular", "Cuartos", "Semifinal", "Final"]:
-        st.subheader(f"Registro: {fase}")
+        st.subheader(f"Registrar Partido - {fase}")
         suffix = st.session_state.contador_form
         df_pend = df[df["Resultado"].astype(str).str.contains("Pendiente", na=False)]
         modo = st.radio("Acción:", ["Nuevo Partido", "Actualizar Pendiente"], horizontal=True, key=f"m_{suffix}") if not df_pend.empty else "Nuevo Partido"
@@ -241,7 +241,6 @@ with col_f:
             rival = row["Equipo Rival"]
             pnd = False
             
-            # 🚨 BLINDAJE APLICADO AQUÍ 🚨
             num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.notna(row["Jornada"]) else 1
             
             st.number_input("Partido #", value=num_p_seguro, disabled=True, key=f"ju_{id_upd}_{suffix}")
@@ -256,10 +255,9 @@ with col_f:
 
         txt_boton = "Guardar Partido" if modo == "Nuevo Partido" else "Actualizar Marcador"
 
-        if st.button(txt_boton, type="primary", use_container_width=True):
+        if st.button(txt_boton, type="primary"):
             if rival.strip():
                 p, r = (0, "Pendiente") if pnd else procesar_marcador(gf, gc, so)
-                # Asegurar que num_p esté definido en ambos flujos
                 jornada_guardar = num_p if modo == "Nuevo Partido" else num_p_seguro
                 data = {"Jornada": jornada_guardar, "Fase": fase, "Equipo Rival": rival, "Goles a Favor": gf, "Goles en Contra": gc, "Resultado": r, "Puntos": p}
                 
@@ -281,6 +279,7 @@ with col_f:
                 except Exception as e:
                     st.error(f"Error con DB: {e}")
 
+# --- Columna Derecha: Tablas ---
 with col_h:
     st.markdown("💡 *Doble clic para corregir marcador manual. Suprimir para borrar fila.*")
     tabs = st.tabs(["Fase Regular", "Liguilla"]) if st.session_state.clasifico_liguilla else st.tabs(["Fase Regular"])
@@ -291,7 +290,6 @@ with col_h:
     df_reg_reporte = df[df["Fase"] == "Regular"].copy()
     df_j_reporte = df_reg_reporte[~df_reg_reporte["Resultado"].astype(str).str.contains("Pendiente", na=False)]
     
-    # 🚨 BLINDAJE APLICADO AQUÍ PARA REPORTES 🚨
     stats_dict = {
         "JJ": len(df_j_reporte),
         "JG": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Victoria", na=False)]),
@@ -306,7 +304,7 @@ with col_h:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
         ed_reg = st.data_editor(df_rv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"id": None, "Fase": None})
         
-        if st.button("💾 Guardar Correcciones Manuales (Regular)"):
+        if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
             ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
             ed_reg['Fase'] = "Regular"
             pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
@@ -327,7 +325,7 @@ with col_h:
             df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
             ed_lig = st.data_editor(df_lv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_l", column_config={"id": None, "Jornada": None, "Puntos": None})
             
-            if st.button("💾 Guardar Correcciones Manuales (Liguilla)"):
+            if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
                 ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
                 pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
                 guardar_correcciones(df, pd_final_lig)
