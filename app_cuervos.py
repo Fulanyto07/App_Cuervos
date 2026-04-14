@@ -15,7 +15,7 @@ except ImportError:
 # 1. Configuración de la página
 st.set_page_config(page_title="Gestor Cuervos Cloud", page_icon="🐦‍⬛", layout="wide")
 
-# 2. Conexión a Supabase (¡ADÍOS GOOGLE SHEETS!)
+# 2. Conexión a Supabase
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -39,7 +39,7 @@ if 'clasifico_liguilla' not in st.session_state:
 def limpiar_formulario():
     st.session_state.contador_form += 1
 
-# 4. Funciones de Datos (Supabase)
+# 4. Funciones de Datos
 def cargar_datos():
     try:
         response = supabase.table("resultados").select("*").order("id").execute()
@@ -47,21 +47,42 @@ def cargar_datos():
     except:
         return pd.DataFrame(columns=["id", "Jornada", "Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"])
 
-def guardar_correcciones(df_completo):
-    df_completo = df_completo.dropna(subset=['Equipo Rival'])
-    if "id" in df_completo.columns: df_completo = df_completo.drop(columns=["id"])
+def guardar_correcciones(df_original, df_modificado):
+    df_modificado = df_modificado.dropna(subset=['Equipo Rival'])
+    
+    # Encontrar qué IDs se borraron manualmente con la tecla Suprimir
+    ids_orig = set(df_original['id'].dropna())
+    ids_mod = set(df_modificado['id'].dropna())
+    ids_a_borrar = ids_orig - ids_mod
+    
     try:
-        supabase.table("resultados").delete().neq("id", 0).execute()
-        records = df_completo.to_dict(orient="records")
-        if records: supabase.table("resultados").insert(records).execute()
+        # 1. Borrar solo los eliminados
+        for id_b in ids_a_borrar:
+            supabase.table("resultados").delete().eq("id", id_b).execute()
+        
+        # 2. Upsert (Actualizar existentes e insertar nuevos) sin duplicar
+        records = []
+        for _, row in df_modificado.iterrows():
+            rec = row.to_dict()
+            if pd.isna(rec.get('id')): 
+                rec.pop('id', None) # Si es nuevo, dejamos que Supabase le asigne ID
+            records.append(rec)
+            
+        if records: 
+            supabase.table("resultados").upsert(records).execute()
+            
         st.cache_data.clear()
-        st.success("✅ ¡Base de datos actualizada!")
+        st.success("✅ Base de datos actualizada sin duplicados.")
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error al guardar: {e}")
 
 def reiniciar_sistema():
     try:
-        supabase.table("resultados").delete().neq("id", 0).execute()
+        # Borrado seguro registro por registro
+        res = supabase.table("resultados").select("id").execute()
+        for r in res.data:
+            supabase.table("resultados").delete().eq("id", r["id"]).execute()
+            
         st.session_state.update({
             "estado_torneo": "Regular",
             "temporada_terminada": False,
@@ -73,7 +94,7 @@ def reiniciar_sistema():
     except Exception as e:
         st.error(f"Error al reiniciar: {e}")
 
-# 5. Lógica Deportiva y Reportes
+# 5. Lógica Deportiva
 def procesar_marcador(favor, contra, so_ganador):
     if favor > contra: return 3, "Victoria"
     elif favor < contra: return 0, "Derrota"
@@ -198,7 +219,7 @@ st.divider()
 
 col_f, col_h = st.columns([2, 3])
 
-# --- Columna Izquierda: Formulario Inteligente ---
+# --- Columna Izquierda: Formulario ---
 with col_f:
     fase = st.session_state.estado_torneo
     if fase in ["Regular", "Cuartos", "Semifinal", "Final"]:
@@ -208,7 +229,10 @@ with col_f:
         modo = st.radio("Acción:", ["Nuevo Partido", "Actualizar Pendiente"], horizontal=True, key=f"m_{suffix}") if not df_pend.empty else "Nuevo Partido"
         
         if modo == "Nuevo Partido":
-            num_p = int(pd.to_numeric(df[df["Fase"]==fase]["Jornada"], errors='coerce').max() or 0) + 1
+            # REPARACIÓN AQUÍ: Evitamos que int(NaN) destruya la aplicación
+            max_j = pd.to_numeric(df[df["Fase"]==fase]["Jornada"], errors='coerce').max()
+            num_p = int(max_j) + 1 if pd.notna(max_j) else 1
+            
             st.number_input("Partido #", value=num_p, disabled=True, key=f"j_{suffix}")
             rival = st.text_input("Equipo Rival", key=f"r_{suffix}")
             pnd = st.checkbox("⏳ Dejar como Pendiente", key=f"p_{suffix}")
@@ -243,7 +267,6 @@ with col_f:
                     st.cache_data.clear()
                     limpiar_formulario()
                     
-                    # Salto automático
                     if not pnd:
                         if fase == "Cuartos": st.session_state.estado_torneo = "Semifinal"
                         elif fase == "Semifinal": st.session_state.estado_torneo = "Final"
@@ -261,7 +284,6 @@ with col_h:
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
     
-    # Cálculos para el reporte
     df_reg_reporte = df[df["Fase"] == "Regular"].copy()
     df_j_reporte = df_reg_reporte[~df_reg_reporte["Resultado"].astype(str).str.contains("Pendiente", na=False)]
     stats_dict = {
@@ -280,8 +302,9 @@ with col_h:
         
         if st.button("💾 Guardar Correcciones Manuales (Regular)"):
             ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
-            pd_f = pd.concat([ed_reg.assign(Fase="Regular"), df[df["Fase"]!="Regular"]], ignore_index=True)
-            guardar_correcciones(pd_f)
+            ed_reg['Fase'] = "Regular"
+            pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
+            guardar_correcciones(df, pd_final)
             st.rerun()
 
         c_p, c_x = st.columns(2)
@@ -300,6 +323,6 @@ with col_h:
             
             if st.button("💾 Guardar Correcciones Manuales (Liguilla)"):
                 ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
-                pd_f = pd.concat([df[df["Fase"]=="Regular"], ed_lig], ignore_index=True)
-                guardar_correcciones(pd_f)
+                pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
+                guardar_correcciones(df, pd_final_lig)
                 st.rerun()
