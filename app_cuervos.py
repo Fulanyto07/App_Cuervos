@@ -234,12 +234,15 @@ with col_f:
     if fase in ["Regular", "Cuartos", "Semifinal", "Final"]:
         st.subheader(f"Registrar Partido - {fase}")
         suffix = st.session_state.contador_form
-        df_pend = df[df["Resultado"].astype(str).str.contains("Pendiente", na=False)]
+        
+        # 🚨 REPARACIÓN 1: Aislar completamente por fase para evitar cruces
+        df_fase = df[df["Fase"] == fase]
+        df_pend = df_fase[df_fase["Resultado"].astype(str).str.contains("Pendiente", na=False)]
+        
         modo = st.radio("Acción:", ["Nuevo Partido", "Actualizar Pendiente"], horizontal=True, key=f"m_{suffix}") if not df_pend.empty else "Nuevo Partido"
         
         if modo == "Nuevo Partido":
-            # REPARACIÓN EXACTA: Buscar el número máximo SOLO dentro de esta fase. 
-            max_j = pd.to_numeric(df[df["Fase"]==fase]["Jornada"], errors='coerce').max()
+            max_j = pd.to_numeric(df_fase["Jornada"], errors='coerce').max()
             num_p = int(max_j) + 1 if pd.notna(max_j) else 1
             
             st.number_input("Partido #", value=num_p, disabled=True, key=f"j_{suffix}")
@@ -247,14 +250,23 @@ with col_f:
             pnd = st.checkbox("⏳ Dejar como Pendiente", key=f"p_{suffix}")
             id_upd = None
         else:
-            sel = st.selectbox("Seleccionar partido a actualizar:", df_pend["Jornada"].astype(str) + " - " + df_pend["Equipo Rival"], key=f"s_{suffix}")
-            row = df_pend.iloc[df_pend["Jornada"].astype(str).tolist().index(sel.split(" - ")[0])]
+            opciones = df_pend["Jornada"].astype(str) + " - " + df_pend["Equipo Rival"]
+            sel = st.selectbox("Seleccionar partido a actualizar:", opciones.tolist(), key=f"s_{suffix}")
             
-            id_upd = row["id"]
-            rival = row["Equipo Rival"]
+            # 🚨 REPARACIÓN 2: Lógica blindada sin .iloc numérico propenso a fallos
+            match_row = df_pend[opciones == sel]
+            
+            if not match_row.empty:
+                row = match_row.iloc[0]
+                id_upd = row["id"]
+                rival = row["Equipo Rival"]
+                num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.notna(row["Jornada"]) else 1
+            else:
+                id_upd = None
+                rival = ""
+                num_p_seguro = 1
+                
             pnd = False
-            
-            num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.notna(row["Jornada"]) else 1
             
             st.number_input("Partido #", value=num_p_seguro, disabled=True, key=f"ju_{id_upd}_{suffix}")
             st.text_input("Equipo Rival", value=rival, disabled=True, key=f"ru_{id_upd}_{suffix}")
@@ -294,4 +306,47 @@ with col_f:
 
 # --- Columna Derecha: Tablas ---
 with col_h:
-    st.markdown("💡 *Doble
+    st.markdown("💡 *Doble clic para editar. Para borrar, selecciona fila y presiona Suprimir.*")
+    
+    df_v = df.copy()
+    if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
+
+    if st.session_state.clasifico_liguilla:
+        if st.session_state.estado_torneo != "Regular":
+            t_lig, t_reg = st.tabs(["Liguilla", "Fase Regular"])
+        else:
+            t_reg, t_lig = st.tabs(["Fase Regular", "Liguilla"])
+    else:
+        t_reg, = st.tabs(["Fase Regular"])
+        t_lig = None
+
+    with t_reg:
+        df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
+        ed_reg = st.data_editor(df_rv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_config={"id": None, "Fase": None})
+        
+        if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
+            ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
+            ed_reg['Fase'] = "Regular"
+            pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
+            guardar_correcciones(df, pd_final)
+            st.rerun()
+
+        c_p, c_x = st.columns(2)
+        df_exp = ed_reg.copy()
+        if "id" in df_exp.columns: df_exp = df_exp.drop(columns=["id"])
+        df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono)
+        
+        if FPDF_DISPONIBLE: 
+            c_p.download_button("📄 PDF", generar_pdf(df_exp, stats_dict), "Cuervos_Reporte.pdf")
+        c_x.download_button("📊 Excel", generar_excel(df_exp, stats_dict), "Cuervos_Reporte.xlsx")
+
+    if t_lig:
+        with t_lig:
+            df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
+            ed_lig = st.data_editor(df_lv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_l", column_config={"id": None, "Jornada": None, "Puntos": None})
+            
+            if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
+                ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
+                pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
+                guardar_correcciones(df, pd_final_lig)
+                st.rerun()
