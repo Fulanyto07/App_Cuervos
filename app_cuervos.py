@@ -370,22 +370,22 @@ with col_h:
         t_lig = None
 
     with t_reg:
-        df_rv = df_v[df_v["Fase"] == "Regular"].copy()
+        df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
         
-        if not df_rv.empty: df_rv = df_rv.set_index("id")
-        
-        # 🚨 CORRECCIÓN: Agregado hide_index=True 🚨
+        # 🚨 REPARACIÓN VISUAL: OCULTANDO ID Y FASE
         ed_reg = st.data_editor(
             df_rv, 
             use_container_width=True, 
             hide_index=True,
             num_rows="dynamic", 
             key="ed_r",
-            column_config={"Fase": st.column_config.TextColumn(disabled=True)}
+            column_config={
+                "id": None, 
+                "Fase": None
+            }
         )
         
         if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
-            ed_reg = ed_reg.reset_index() 
             ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
             ed_reg['Fase'] = "Regular"
             pd_final = pd.concat([ed_reg, df[df["Fase"] != "Regular"]], ignore_index=True)
@@ -393,8 +393,8 @@ with col_h:
             st.rerun()
 
         c_p, c_x = st.columns(2)
-        df_exp = ed_reg.copy().reset_index()
-        df_exp = df_exp.drop(columns=["id", "Fase", "index"], errors="ignore")
+        df_exp = ed_reg.copy()
+        df_exp = df_exp.drop(columns=["id", "Fase"], errors="ignore")
         if "Resultado" in df_exp.columns:
             df_exp['Resultado'] = df_exp['Resultado'].apply(limpiar_icono)
         
@@ -404,11 +404,9 @@ with col_h:
 
     if t_lig:
         with t_lig:
-            df_lv = df_v[df_v["Fase"] != "Regular"].copy()
+            df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
             
-            if not df_lv.empty: df_lv = df_lv.set_index("id")
-            
-            # 🚨 CORRECCIÓN: Agregado hide_index=True 🚨
+            # 🚨 REPARACIÓN VISUAL: OCULTANDO ID, FASE, JORNADA Y PUNTOS EN LIGUILLA
             ed_lig = st.data_editor(
                 df_lv, 
                 use_container_width=True, 
@@ -416,13 +414,14 @@ with col_h:
                 num_rows="dynamic", 
                 key="ed_l",
                 column_config={
-                    "Jornada": st.column_config.NumberColumn(disabled=True),
-                    "Puntos": st.column_config.NumberColumn(disabled=True)
+                    "id": None,
+                    "Fase": None,
+                    "Jornada": None,
+                    "Puntos": None
                 }
             )
             
             if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
-                ed_lig = ed_lig.reset_index() 
                 ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
                 pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
                 guardar_correcciones(df, pd_final_lig)
