@@ -50,35 +50,31 @@ def cargar_datos():
 def guardar_correcciones(df_original, df_modificado):
     df_modificado = df_modificado.dropna(subset=['Equipo Rival'])
     
-    # Encontrar qué IDs se borraron manualmente con la tecla Suprimir
     ids_orig = set(df_original['id'].dropna())
     ids_mod = set(df_modificado['id'].dropna())
     ids_a_borrar = ids_orig - ids_mod
     
     try:
-        # 1. Borrar solo los eliminados
         for id_b in ids_a_borrar:
             supabase.table("resultados").delete().eq("id", id_b).execute()
         
-        # 2. Upsert (Actualizar existentes e insertar nuevos) sin duplicar
         records = []
         for _, row in df_modificado.iterrows():
             rec = row.to_dict()
             if pd.isna(rec.get('id')): 
-                rec.pop('id', None) # Si es nuevo, dejamos que Supabase le asigne ID
+                rec.pop('id', None)
             records.append(rec)
             
         if records: 
             supabase.table("resultados").upsert(records).execute()
             
         st.cache_data.clear()
-        st.success("✅ Base de datos actualizada sin duplicados.")
+        st.success("✅ Base de datos actualizada.")
     except Exception as e:
         st.error(f"Error al guardar: {e}")
 
 def reiniciar_sistema():
     try:
-        # Borrado seguro registro por registro
         res = supabase.table("resultados").select("id").execute()
         for r in res.data:
             supabase.table("resultados").delete().eq("id", r["id"]).execute()
@@ -150,7 +146,6 @@ def generar_pdf(df_reg, stats):
 # --- FLUJO PRINCIPAL ---
 df = cargar_datos()
 
-# Lógica de detección automática de estado según los datos
 if not df.empty:
     if ((df['Fase'] == 'Final') & (df['Resultado'].str.contains('Victoria|G-SO'))).any():
         st.session_state.estado_torneo = "Campeon"
@@ -163,7 +158,6 @@ if not df.empty:
         if not df[df['Fase'] == 'Semifinal'].empty: st.session_state.estado_torneo = "Final"
         elif not df[df['Fase'] == 'Cuartos'].empty: st.session_state.estado_torneo = "Semifinal"
 
-# Barra Lateral
 with st.sidebar:
     if os.path.exists("cuervos_logo.png"): st.image(Image.open("cuervos_logo.png"), width=120)
     st.header("⚙️ Menú Admin")
@@ -210,7 +204,11 @@ if st.session_state.estado_torneo == "Campeon":
 
 df_reg = df[df["Fase"] == "Regular"]
 df_j = df_reg[~df_reg["Resultado"].astype(str).str.contains("Pendiente", na=False)]
-stats = {"JJ": len(df_j), "JG": len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria", na=False)]), "PTS": int(df_reg["Puntos"].sum()) if not df_reg.empty else 0}
+
+# 🚨 BLINDAJE APLICADO AQUÍ 🚨
+pts_totales = int(pd.to_numeric(df_reg["Puntos"], errors='coerce').fillna(0).sum())
+
+stats = {"JJ": len(df_j), "JG": len(df_j[df_j["Resultado"].astype(str).str.contains("Victoria", na=False)]), "PTS": pts_totales}
 
 c_pts, c_stats = st.columns([1, 3])
 c_pts.metric("Puntos", f"{stats['PTS']} pts")
@@ -219,7 +217,6 @@ st.divider()
 
 col_f, col_h = st.columns([2, 3])
 
-# --- Columna Izquierda: Formulario ---
 with col_f:
     fase = st.session_state.estado_torneo
     if fase in ["Regular", "Cuartos", "Semifinal", "Final"]:
@@ -229,7 +226,6 @@ with col_f:
         modo = st.radio("Acción:", ["Nuevo Partido", "Actualizar Pendiente"], horizontal=True, key=f"m_{suffix}") if not df_pend.empty else "Nuevo Partido"
         
         if modo == "Nuevo Partido":
-            # REPARACIÓN AQUÍ: Evitamos que int(NaN) destruya la aplicación
             max_j = pd.to_numeric(df[df["Fase"]==fase]["Jornada"], errors='coerce').max()
             num_p = int(max_j) + 1 if pd.notna(max_j) else 1
             
@@ -240,8 +236,15 @@ with col_f:
         else:
             sel = st.selectbox("Seleccionar partido a actualizar:", df_pend["Jornada"].astype(str) + " - " + df_pend["Equipo Rival"], key=f"s_{suffix}")
             row = df_pend.iloc[df_pend["Jornada"].astype(str).tolist().index(sel.split(" - ")[0])]
-            num_p, rival, pnd, id_upd = row["Jornada"], row["Equipo Rival"], False, row["id"]
-            st.number_input("Partido #", value=int(num_p), disabled=True, key=f"ju_{id_upd}_{suffix}")
+            
+            id_upd = row["id"]
+            rival = row["Equipo Rival"]
+            pnd = False
+            
+            # 🚨 BLINDAJE APLICADO AQUÍ 🚨
+            num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.notna(row["Jornada"]) else 1
+            
+            st.number_input("Partido #", value=num_p_seguro, disabled=True, key=f"ju_{id_upd}_{suffix}")
             st.text_input("Equipo Rival", value=rival, disabled=True, key=f"ru_{id_upd}_{suffix}")
 
         gf, gc, so = 0, 0, None
@@ -256,7 +259,9 @@ with col_f:
         if st.button(txt_boton, type="primary", use_container_width=True):
             if rival.strip():
                 p, r = (0, "Pendiente") if pnd else procesar_marcador(gf, gc, so)
-                data = {"Jornada": num_p, "Fase": fase, "Equipo Rival": rival, "Goles a Favor": gf, "Goles en Contra": gc, "Resultado": r, "Puntos": p}
+                # Asegurar que num_p esté definido en ambos flujos
+                jornada_guardar = num_p if modo == "Nuevo Partido" else num_p_seguro
+                data = {"Jornada": jornada_guardar, "Fase": fase, "Equipo Rival": rival, "Goles a Favor": gf, "Goles en Contra": gc, "Resultado": r, "Puntos": p}
                 
                 try:
                     if id_upd: 
@@ -276,7 +281,6 @@ with col_f:
                 except Exception as e:
                     st.error(f"Error con DB: {e}")
 
-# --- Columna Derecha: Tablas ---
 with col_h:
     st.markdown("💡 *Doble clic para corregir marcador manual. Suprimir para borrar fila.*")
     tabs = st.tabs(["Fase Regular", "Liguilla"]) if st.session_state.clasifico_liguilla else st.tabs(["Fase Regular"])
@@ -286,14 +290,16 @@ with col_h:
     
     df_reg_reporte = df[df["Fase"] == "Regular"].copy()
     df_j_reporte = df_reg_reporte[~df_reg_reporte["Resultado"].astype(str).str.contains("Pendiente", na=False)]
+    
+    # 🚨 BLINDAJE APLICADO AQUÍ PARA REPORTES 🚨
     stats_dict = {
         "JJ": len(df_j_reporte),
         "JG": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Victoria", na=False)]),
         "JE": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Empate", na=False)]),
         "JP": len(df_j_reporte[df_j_reporte["Resultado"].astype(str).str.contains("Derrota", na=False)]),
-        "GF": int(df_j_reporte["Goles a Favor"].sum()) if not df_j_reporte.empty else 0,
-        "GC": int(df_j_reporte["Goles en Contra"].sum()) if not df_j_reporte.empty else 0,
-        "PTS": int(df_reg_reporte["Puntos"].sum()) if not df_reg_reporte.empty else 0
+        "GF": int(pd.to_numeric(df_j_reporte["Goles a Favor"], errors='coerce').fillna(0).sum()),
+        "GC": int(pd.to_numeric(df_j_reporte["Goles en Contra"], errors='coerce').fillna(0).sum()),
+        "PTS": int(pd.to_numeric(df_reg_reporte["Puntos"], errors='coerce').fillna(0).sum())
     }
 
     with tabs[0]:
