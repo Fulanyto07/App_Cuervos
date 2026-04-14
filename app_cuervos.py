@@ -66,7 +66,6 @@ def guardar_correcciones(df_original, df_modificado):
             if pd.isna(rec.get('id')): 
                 rec.pop('id', None)
             
-            # Limpieza exhaustiva de NaNs para que Supabase no crashee silenciosamente
             clean_rec = {}
             for k, v in rec.items():
                 if pd.isna(v): clean_rec[k] = None
@@ -83,9 +82,7 @@ def guardar_correcciones(df_original, df_modificado):
 
 def reiniciar_sistema():
     try:
-        res = supabase.table("resultados").select("id").execute()
-        for r in res.data:
-            supabase.table("resultados").delete().eq("id", r["id"]).execute()
+        supabase.table("resultados").delete().neq("id", 0).execute()
             
         st.session_state.update({
             "estado_torneo": "Regular",
@@ -157,10 +154,8 @@ def generar_pdf(df_reg, stats):
 # --- FLUJO PRINCIPAL ---
 df = cargar_datos()
 
-# 🚨 CEREBRO MAESTRO BLINDADO 🚨
 df_liguilla = df[df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])]
 
-# Solo fuerza la Liguilla si hay datos Y el usuario NO ha pedido explícitamente "Deshacer Cierre"
 if not df_liguilla.empty and not st.session_state.override_cierre:
     st.session_state.clasifico_liguilla = True
     st.session_state.temporada_terminada = True
@@ -178,7 +173,6 @@ if not df_liguilla.empty and not st.session_state.override_cierre:
         else:
             st.session_state.estado_torneo = "Cuartos"
 elif st.session_state.override_cierre:
-    # Se respeta la voluntad del usuario de anular el cierre temporalmente
     pass 
 else:
     if st.session_state.clasifico_liguilla:
@@ -205,7 +199,7 @@ with st.sidebar:
                     "temporada_terminada": True, 
                     "preguntar_clasificacion": False, 
                     "estado_torneo": "Cuartos",
-                    "override_cierre": False # Limpiamos el override al volver a cerrar
+                    "override_cierre": False
                 })
                 limpiar_formulario()
                 st.balloons(); st.rerun()
@@ -226,14 +220,13 @@ with st.sidebar:
         else:
             st.success("🏆 Liguilla Activa")
         
-        # 🚨 BOTON DE DESHACER CIERRE LIBERADO Y CON OVERRIDE 🚨
         if st.button("⏪ Deshacer Cierre", use_container_width=True):
             st.session_state.update({
                 "temporada_terminada": False, 
                 "clasifico_liguilla": False, 
                 "estado_torneo": "Regular", 
                 "preguntar_clasificacion": False,
-                "override_cierre": True # Activamos el modo Anulación
+                "override_cierre": True 
             })
             limpiar_formulario()
             st.rerun()
@@ -244,7 +237,8 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Danger Zone")
-    confirma = st.checkbox("Confirmar reinicio de temporada")
+    # 🚨 REPARACIÓN AQUÍ: LLAVE DINÁMICA PARA FORZAR AMNESIA EN EL CHECKBOX 🚨
+    confirma = st.checkbox("Confirmar reinicio de temporada", key=f"reset_{st.session_state.contador_form}")
     if st.button("♻️ Nueva Temporada", type="secondary", disabled=not confirma, use_container_width=True):
         reiniciar_sistema()
 
@@ -363,12 +357,10 @@ with col_h:
         t_reg, = st.tabs(["⚽ Fase Regular"])
         t_lig = None
 
-    # 🚨 LA MAGIA: column_order en lugar de column_config para no perder los IDs al guardar
     cols_reg = ["Jornada", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"]
     
     with t_reg:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
-        # Aquí Streamlit esconde el id visualmente, pero lo mantiene en la memoria para poder actualizar Supabase
         ed_reg = st.data_editor(df_rv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_r", column_order=cols_reg)
         
         if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
@@ -390,11 +382,4 @@ with col_h:
     if t_lig:
         cols_lig = ["Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado"]
         with t_lig:
-            df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
-            ed_lig = st.data_editor(df_lv, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_l", column_order=cols_lig)
-            
-            if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
-                ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
-                pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
-                guardar_correcciones(df, pd_final_lig)
-                st.rerun()
+            df_lv = df
