@@ -188,7 +188,6 @@ elif st.session_state.override_cierre:
 else:
     if st.session_state.clasifico_liguilla:
         st.session_state.estado_torneo = "Cuartos"
-    # 🚨 AQUÍ ESTÁ LA REPARACIÓN: Si ya terminó y no hay liguilla, están Eliminados
     elif st.session_state.temporada_terminada:
         st.session_state.estado_torneo = "Eliminado"
     else:
@@ -370,16 +369,16 @@ with col_h:
         t_reg, = st.tabs(["⚽ Fase Regular"])
         t_lig = None
 
-    cols_reg = ["Jornada", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado", "Puntos"]
-    
     with t_reg:
         df_rv = df_v[df_v["Fase"] == "Regular"].copy()
         
         if not df_rv.empty: df_rv = df_rv.set_index("id")
         
+        # 🚨 CORRECCIÓN: Agregado hide_index=True 🚨
         ed_reg = st.data_editor(
             df_rv, 
             use_container_width=True, 
+            hide_index=True,
             num_rows="dynamic", 
             key="ed_r",
             column_config={"Fase": st.column_config.TextColumn(disabled=True)}
@@ -404,15 +403,16 @@ with col_h:
         c_x.download_button("📊 Excel", generar_excel(df_exp, stats_dict), "Cuervos_Reporte.xlsx")
 
     if t_lig:
-        cols_lig = ["Fase", "Equipo Rival", "Goles a Favor", "Goles en Contra", "Resultado"]
         with t_lig:
             df_lv = df_v[df_v["Fase"] != "Regular"].copy()
             
             if not df_lv.empty: df_lv = df_lv.set_index("id")
             
+            # 🚨 CORRECCIÓN: Agregado hide_index=True 🚨
             ed_lig = st.data_editor(
                 df_lv, 
                 use_container_width=True, 
+                hide_index=True,
                 num_rows="dynamic", 
                 key="ed_l",
                 column_config={
