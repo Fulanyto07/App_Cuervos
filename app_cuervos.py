@@ -51,16 +51,13 @@ def cargar_datos():
 
 def guardar_correcciones(df_original, df_modificado):
     df_modificado = df_modificado.dropna(subset=['Equipo Rival'])
-    
     ids_orig = set(df_original['id'].dropna())
     
-    # Extraer IDs válidos
     ids_mod = []
     for val in df_modificado['id']:
         if pd.notna(val) and not isinstance(val, str):
             ids_mod.append(val)
     ids_mod = set(ids_mod)
-    
     ids_a_borrar = ids_orig - ids_mod
     
     try:
@@ -71,7 +68,6 @@ def guardar_correcciones(df_original, df_modificado):
         for _, row in df_modificado.iterrows():
             rec = row.to_dict()
             id_val = rec.get('id')
-            
             if pd.isna(id_val) or isinstance(id_val, str): 
                 rec.pop('id', None)
             else:
@@ -94,7 +90,6 @@ def guardar_correcciones(df_original, df_modificado):
 def reiniciar_sistema():
     try:
         supabase.table("resultados").delete().neq("id", 0).execute()
-            
         st.session_state.update({
             "estado_torneo": "Regular",
             "temporada_terminada": False,
@@ -129,7 +124,6 @@ def limpiar_icono(res):
 def generar_excel(df_reg, stats):
     output = io.BytesIO()
     df_reg = df_reg.drop(columns=["Fase", "id"], errors="ignore")
-        
     df_stats = pd.DataFrame([stats])
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_stats.to_excel(writer, index=False, sheet_name='Fase Regular', startrow=0)
@@ -148,8 +142,7 @@ def generar_pdf(df_reg, stats):
     pdf.ln(5)
     pdf.set_font("Arial", "B", 10)
     cols, anchos = ['Jornada', 'Equipo Rival', 'GF', 'GC', 'Resultado', 'Pts'], [20, 60, 20, 20, 40, 20]
-    for i, col in enumerate(cols): 
-        pdf.cell(anchos[i], 10, col, border=1, align='C')
+    for i, col in enumerate(cols): pdf.cell(anchos[i], 10, col, border=1, align='C')
     pdf.ln()
     pdf.set_font("Arial", "", 10)
     for _, row in df_reg.iterrows():
@@ -164,7 +157,6 @@ def generar_pdf(df_reg, stats):
 
 # --- FLUJO PRINCIPAL ---
 df = cargar_datos()
-
 df_liguilla = df[df['Fase'].isin(['Cuartos', 'Semifinal', 'Final'])]
 
 if not df_liguilla.empty and not st.session_state.override_cierre:
@@ -314,17 +306,18 @@ with col_f:
             if not match_row.empty:
                 row = match_row.iloc[0]
                 id_upd = row["id"]
-                rival = row["Equipo Rival"]
+                rival_defecto = row["Equipo Rival"]
                 num_p_seguro = int(pd.to_numeric(row["Jornada"], errors='coerce')) if pd.notna(row["Jornada"]) else 1
             else:
                 id_upd = None
-                rival = ""
+                rival_defecto = ""
                 num_p_seguro = 1
                 
             pnd = False
-            
             st.number_input("Partido #", value=num_p_seguro, disabled=True, key=f"ju_{id_upd}_{suffix}")
-            st.text_input("Equipo Rival", value=rival, disabled=True, key=f"ru_{id_upd}_{suffix}")
+            
+            # 🚨 CORRECCIÓN AQUÍ: Quitamos disabled=True para que puedas editar el nombre (ej. Everton -> Arsenal)
+            rival = st.text_input("Equipo Rival", value=rival_defecto, key=f"ru_{id_upd}_{suffix}")
 
         gf, gc, so = 0, 0, None
         if not pnd:
@@ -339,7 +332,7 @@ with col_f:
             if rival.strip():
                 p, r = (0, "Pendiente") if pnd else procesar_marcador(gf, gc, so)
                 jornada_guardar = num_p if modo == "Nuevo Partido" else num_p_seguro
-                data = {"Jornada": jornada_guardar, "Fase": fase, "Equipo Rival": rival, "Goles a Favor": gf, "Goles en Contra": gc, "Resultado": r, "Puntos": p}
+                data = {"Jornada": jornada_guardar, "Fase": fase, "Equipo Rival": rival.strip(), "Goles a Favor": gf, "Goles en Contra": gc, "Resultado": r, "Puntos": p}
                 
                 try:
                     if id_upd: 
@@ -356,7 +349,6 @@ with col_f:
 # --- Columna Derecha: Tablas ---
 with col_h:
     st.markdown("💡 *Doble clic para editar. Para borrar, selecciona fila y presiona Suprimir.*")
-    
     df_v = df.copy()
     if not df_v.empty: df_v['Resultado'] = df_v['Resultado'].apply(obtener_icono)
 
@@ -371,7 +363,6 @@ with col_h:
 
     with t_reg:
         df_rv = df_v[df_v["Fase"] == "Regular"].reset_index(drop=True)
-        
         ed_reg = st.data_editor(
             df_rv, 
             use_container_width=True, 
@@ -383,7 +374,6 @@ with col_h:
                 "Fase": None
             }
         )
-        
         if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_reg"):
             ed_reg['Resultado'] = ed_reg['Resultado'].apply(limpiar_icono)
             ed_reg['Fase'] = "Regular"
@@ -404,8 +394,6 @@ with col_h:
     if t_lig:
         with t_lig:
             df_lv = df_v[df_v["Fase"] != "Regular"].reset_index(drop=True)
-            
-            # 🚨 CORRECCIÓN: "Fase" se borró de aquí para que vuelva a ser visible 🚨
             ed_lig = st.data_editor(
                 df_lv, 
                 use_container_width=True, 
@@ -418,7 +406,6 @@ with col_h:
                     "Puntos": None
                 }
             )
-            
             if st.button("💾 Guardar Correcciones de la tabla", key="btn_save_lig"):
                 ed_lig['Resultado'] = ed_lig['Resultado'].apply(limpiar_icono)
                 pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
