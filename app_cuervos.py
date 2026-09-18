@@ -240,6 +240,37 @@ with st.sidebar:
     if st.button("🔄 Refrescar Pantalla", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
+    # --- NUEVA SECCIÓN: RESTAURAR DESDE EXCEL ---
+    st.divider()
+    with st.expander("📥 Restaurar BD desde Excel"):
+        st.caption("Sube un archivo .xlsx generado por la app para restaurar los datos.")
+        archivo_subido = st.file_uploader("Archivo Excel", type=["xlsx"], label_visibility="collapsed")
+        
+        if archivo_subido is not None:
+            if st.button("⚠️ Confirmar Restauración", type="primary", use_container_width=True):
+                try:
+                    # 1. Leer el Excel
+                    df_nuevo = pd.read_excel(archivo_subido)
+                    
+                    # 2. Borrar datos actuales (usamos neq('id', 0) para borrar todo)
+                    supabase.table("resultados").delete().neq("id", 0).execute()
+                    
+                    # 3. Preparar los nuevos registros
+                    registros = df_nuevo.to_dict(orient='records')
+                    for r in registros:
+                        r.pop('id', None)  # Quitamos el ID para que Supabase lo auto-genere
+                        r.pop('created_at', None)
+                        
+                    # 4. Insertar a la base de datos
+                    if registros:
+                        supabase.table("resultados").insert(registros).execute()
+                        
+                    st.cache_data.clear()
+                    st.success("✅ Base de datos restaurada con éxito.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al restaurar: {e}")
+
     st.divider()
     st.subheader("Danger Zone")
     confirma = st.checkbox("Confirmar reinicio de temporada", key=f"reset_{st.session_state.contador_form}")
