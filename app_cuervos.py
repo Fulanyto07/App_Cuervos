@@ -226,21 +226,27 @@ with st.sidebar:
             st.success("🏆 Liguilla Activa")
         
         if st.button("⏪ Deshacer Cierre", use_container_width=True):
+            # LÓGICA CORREGIDA: Borramos físicamente los partidos de Liguilla para que no reaparezcan
+            try:
+                supabase.table("resultados").delete().in_("Fase", ["Cuartos", "Semifinal", "Final"]).execute()
+            except Exception as e:
+                st.error(f"Error limpiando Liguilla: {e}")
+                
             st.session_state.update({
                 "temporada_terminada": False, 
                 "clasifico_liguilla": False, 
                 "estado_torneo": "Regular", 
                 "preguntar_clasificacion": False,
-                "override_cierre": True 
+                "override_cierre": False 
             })
             limpiar_formulario()
+            st.cache_data.clear()
             st.rerun()
 
     st.divider()
     if st.button("🔄 Refrescar Pantalla", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
-    # --- NUEVA SECCIÓN: RESTAURAR DESDE EXCEL ---
     st.divider()
     with st.expander("📥 Restaurar BD desde Excel"):
         st.caption("Sube un archivo .xlsx generado por la app para restaurar los datos.")
@@ -249,22 +255,14 @@ with st.sidebar:
         if archivo_subido is not None:
             if st.button("⚠️ Confirmar Restauración", type="primary", use_container_width=True):
                 try:
-                    # 1. Leer el Excel
                     df_nuevo = pd.read_excel(archivo_subido)
-                    
-                    # 2. Borrar datos actuales (usamos neq('id', 0) para borrar todo)
                     supabase.table("resultados").delete().neq("id", 0).execute()
-                    
-                    # 3. Preparar los nuevos registros
                     registros = df_nuevo.to_dict(orient='records')
                     for r in registros:
-                        r.pop('id', None)  # Quitamos el ID para que Supabase lo auto-genere
+                        r.pop('id', None)
                         r.pop('created_at', None)
-                        
-                    # 4. Insertar a la base de datos
                     if registros:
                         supabase.table("resultados").insert(registros).execute()
-                        
                     st.cache_data.clear()
                     st.success("✅ Base de datos restaurada con éxito.")
                     st.rerun()
@@ -346,8 +344,6 @@ with col_f:
                 
             pnd = False
             st.number_input("Partido #", value=num_p_seguro, disabled=True, key=f"ju_{id_upd}_{suffix}")
-            
-            # 🚨 CORRECCIÓN AQUÍ: Quitamos disabled=True para que puedas editar el nombre (ej. Everton -> Arsenal)
             rival = st.text_input("Equipo Rival", value=rival_defecto, key=f"ru_{id_upd}_{suffix}")
 
         gf, gc, so = 0, 0, None
