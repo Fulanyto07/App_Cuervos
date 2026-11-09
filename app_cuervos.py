@@ -19,6 +19,7 @@ except ImportError:
 # backdrop-filter; con 'Reducir transparencia' del sistema pasa a sólido.
 # =============================================================================
 import base64
+import streamlit.components.v1 as components
 import html
 
 ACENTO = "#0A6CDB"
@@ -127,10 +128,13 @@ html, body, .stApp, [data-testid="stAppViewContainer"], .stMarkdown, button, inp
   color:var(--cv-text);
 }
 [data-testid="stHeader"]{background:transparent;}
+html, body{background:#0A0B0D;}
 [data-testid="stMainBlockContainer"], .main .block-container{padding-top:2rem; max-width:1440px;}
 
 /* ---------- Barra lateral de vidrio ---------- */
-section[data-testid="stSidebar"]{background:transparent !important; border-right:0 !important;}
+section[data-testid="stSidebar"]{background:transparent !important; border-right:0 !important; box-shadow:none !important;}
+section[data-testid="stSidebar"] > div:first-child{border:0 !important; box-shadow:none !important;}
+[data-testid="stSidebarResizer"]{display:none !important;}
 [data-testid="stSidebarContent"]{
   background:var(--cv-glass); backdrop-filter:var(--cv-blur); -webkit-backdrop-filter:var(--cv-blur);
   border:1px solid var(--cv-line); border-radius:22px; box-shadow:var(--cv-shadow);
@@ -246,6 +250,8 @@ input:disabled{color:var(--cv-muted) !important; -webkit-text-fill-color:var(--c
   .cv-path{grid-template-columns:repeat(2, minmax(0,1fr));}
 }
 @media (max-width: 768px){
+  html, body{background:#0A0B0D !important;}
+  .stApp{background-attachment:scroll !important;}
   section[data-testid="stSidebar"], section[data-testid="stSidebar"] > div:first-child{box-shadow:none !important; border:0 !important; background:transparent !important;}
   [data-testid="stSidebarResizer"]{display:none !important;}
   [data-testid="stSidebarContent"]{margin:8px !important; width:auto !important; height:calc(100% - 16px) !important;}
@@ -616,7 +622,8 @@ def guardar_correcciones(df_original, df_modificado):
 
 def reiniciar_sistema():
     try:
-        supabase.table("resultados").delete().neq("id", 0).execute()
+        with st.spinner("Borrando partidos..."):
+            supabase.table("resultados").delete().neq("id", 0).execute()
         st.session_state.update({
             "estado_torneo": "Regular",
             "temporada_terminada": False,
@@ -626,6 +633,7 @@ def reiniciar_sistema():
         })
         limpiar_formulario()
         st.cache_data.clear()
+        st.session_state["cerrar_menu"] = True
         avisar_y_recargar("Temporada reiniciada: se borraron todos los partidos.")
     except Exception as e:
         st.error(f"Error al reiniciar: {e}")
@@ -812,6 +820,20 @@ stats_dict = {
 # --- AVISO DE LA ACCIÓN ANTERIOR ---
 if "aviso" in st.session_state:
     st.toast(st.session_state.pop("aviso"), icon=":material/check_circle:")
+
+# Tras reiniciar, en celular cierra el menú lateral para mostrar la pantalla principal
+if st.session_state.pop("cerrar_menu", False):
+    components.html("""<script>
+    setTimeout(function(){
+      try{
+        var w = window.parent, d = w.document;
+        if (w.innerWidth > 768) return;
+        var b = d.querySelector('[data-testid="stSidebarCollapseButton"] button')
+             || d.querySelector('section[data-testid="stSidebar"] button[kind="header"]');
+        if (b) b.click();
+      }catch(e){}
+    }, 300);
+    </script>""", height=0)
 
 # --- ENCABEZADO Y RESUMEN ---
 estado_actual = st.session_state.estado_torneo
