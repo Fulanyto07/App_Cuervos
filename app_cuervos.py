@@ -14,7 +14,9 @@ except ImportError:
     FPDF_DISPONIBLE = False
 
 # =============================================================================
-# CAPA VISUAL (estilo vidrio, tipografía y bloques HTML).
+# CAPA VISUAL (estilo vidrio, tipografía y bloques HTML). Solo presentación:
+# no toca datos ni reglas deportivas. El vidrio es una aproximación web con
+# backdrop-filter; con 'Reducir transparencia' del sistema pasa a sólido.
 # =============================================================================
 import base64
 import html
@@ -242,6 +244,11 @@ input:disabled{color:var(--cv-muted) !important; -webkit-text-fill-color:var(--c
   .cv-title{font-size:30px;}
   .cv-big{font-size:56px;}
   .cv-path{grid-template-columns:repeat(2, minmax(0,1fr));}
+}
+@media (max-width: 768px){
+  section[data-testid="stSidebar"], section[data-testid="stSidebar"] > div:first-child{box-shadow:none !important; border:0 !important; background:transparent !important;}
+  [data-testid="stSidebarResizer"]{display:none !important;}
+  [data-testid="stSidebarContent"]{margin:8px !important; width:auto !important; height:calc(100% - 16px) !important;}
 }
 @media (prefers-reduced-transparency: reduce){
   [data-testid="stSidebarContent"], [class*="st-key-cvpanel_"], .cv-glass{
@@ -556,6 +563,11 @@ if 'override_cierre' not in st.session_state:
 def limpiar_formulario():
     st.session_state.contador_form += 1
 
+def avisar_y_recargar(mensaje):
+    """Guarda un aviso que sobrevive al rerun (st.rerun borra lo que se mostró antes)."""
+    st.session_state["aviso"] = mensaje
+    st.rerun()
+
 # 4. Funciones de Datos
 def cargar_datos():
     try:
@@ -598,7 +610,7 @@ def guardar_correcciones(df_original, df_modificado):
             supabase.table("resultados").upsert(records).execute()
 
         st.cache_data.clear()
-        st.success("Base de datos actualizada con éxito.", icon=":material/check_circle:")
+        st.session_state["aviso"] = "Cambios guardados en la base de datos."
     except Exception as e:
         st.error(f"Error al guardar: {e}")
 
@@ -614,7 +626,7 @@ def reiniciar_sistema():
         })
         limpiar_formulario()
         st.cache_data.clear()
-        st.rerun()
+        avisar_y_recargar("Temporada reiniciada: se borraron todos los partidos.")
     except Exception as e:
         st.error(f"Error al reiniciar: {e}")
 
@@ -723,7 +735,8 @@ with st.sidebar:
                     "override_cierre": False
                 })
                 limpiar_formulario()
-                st.balloons(); st.rerun()
+                st.balloons()
+                avisar_y_recargar("Fase regular cerrada: a la liguilla.")
             if c2.button("No", **ANCHO):
                 st.session_state.update({
                     "clasifico_liguilla": False,
@@ -732,7 +745,7 @@ with st.sidebar:
                     "estado_torneo": "Eliminado",
                     "override_cierre": False
                 })
-                st.rerun()
+                avisar_y_recargar("Fase regular cerrada: no clasificaron.")
     else:
         if st.button("Deshacer cierre", icon=":material/undo:", **ANCHO):
             # Borramos físicamente los partidos de Liguilla para que no reaparezcan
@@ -750,7 +763,7 @@ with st.sidebar:
             })
             limpiar_formulario()
             st.cache_data.clear()
-            st.rerun()
+            avisar_y_recargar("Cierre deshecho: la liguilla se borró y la temporada regresa a fase regular.")
 
     if st.button("Refrescar datos", icon=":material/refresh:", **ANCHO):
         st.cache_data.clear(); st.rerun()
@@ -771,14 +784,14 @@ with st.sidebar:
                     if registros:
                         supabase.table("resultados").insert(registros).execute()
                     st.cache_data.clear()
-                    st.success("Base de datos restaurada con éxito.", icon=":material/check_circle:")
-                    st.rerun()
+                    avisar_y_recargar("Base de datos restaurada con éxito.")
                 except Exception as e:
                     st.error(f"Error al restaurar: {e}")
 
     with bloque("cv_danger"):
-        confirma = st.checkbox("Confirmar reinicio de temporada", key=f"reset_{st.session_state.contador_form}")
-        if st.button("Nueva temporada", type="secondary", icon=":material/delete:", disabled=not confirma, **ANCHO):
+        st.caption("Borra TODOS los partidos de la base. No se puede deshacer.")
+        escrito = st.text_input("Escribe BORRAR para confirmar", key=f"reset_txt_{st.session_state.contador_form}")
+        if st.button("Borrar todos los partidos", type="secondary", icon=":material/delete:", disabled=escrito.strip() != "BORRAR", **ANCHO):
             reiniciar_sistema()
 
 # --- ESTADÍSTICAS ---
@@ -795,6 +808,10 @@ stats_dict = {
     "GC": int(pd.to_numeric(df_j["Goles en Contra"], errors='coerce').fillna(0).sum()),
     "PTS": int(pd.to_numeric(df_reg["Puntos"], errors='coerce').fillna(0).sum())
 }
+
+# --- AVISO DE LA ACCIÓN ANTERIOR ---
+if "aviso" in st.session_state:
+    st.toast(st.session_state.pop("aviso"), icon=":material/check_circle:")
 
 # --- ENCABEZADO Y RESUMEN ---
 estado_actual = st.session_state.estado_torneo
