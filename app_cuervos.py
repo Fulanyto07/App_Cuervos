@@ -132,9 +132,11 @@ html, body{background:#0A0B0D;}
 [data-testid="stMainBlockContainer"], .main .block-container{padding-top:2rem; max-width:1440px;}
 
 /* ---------- Barra lateral de vidrio ---------- */
-section[data-testid="stSidebar"]{background:transparent !important; border-right:0 !important; box-shadow:none !important;}
-section[data-testid="stSidebar"] > div:first-child{border:0 !important; box-shadow:none !important;}
-[data-testid="stSidebarResizer"]{display:none !important;}
+section[data-testid="stSidebar"]{background:transparent !important; border:none !important; border-right:none !important; box-shadow:none !important; outline:none !important;}
+section[data-testid="stSidebar"] > div:first-child{border:none !important; box-shadow:none !important;}
+section[data-testid="stSidebar"]::before,section[data-testid="stSidebar"]::after{display:none !important; content:none !important;}
+[data-testid="stSidebarResizer"]{display:none !important; width:0 !important; min-width:0 !important; max-width:0 !important; opacity:0 !important; pointer-events:none !important; overflow:hidden !important;}
+div[class*="ResizeHandle"],div[class*="resizeHandle"],div[class*="sidebar-resize"]{display:none !important;}
 [data-testid="stSidebarContent"]{
   background:var(--cv-glass); backdrop-filter:var(--cv-blur); -webkit-backdrop-filter:var(--cv-blur);
   border:1px solid var(--cv-line); border-radius:22px; box-shadow:var(--cv-shadow);
@@ -565,6 +567,8 @@ if 'clasifico_liguilla' not in st.session_state:
     st.session_state.clasifico_liguilla = False
 if 'override_cierre' not in st.session_state:
     st.session_state.override_cierre = False
+if 'confirmar_borrar' not in st.session_state:
+    st.session_state.confirmar_borrar = False
 
 def limpiar_formulario():
     st.session_state.contador_form += 1
@@ -797,10 +801,20 @@ with st.sidebar:
                     st.error(f"Error al restaurar: {e}")
 
     with bloque("cv_danger"):
-        st.caption("Borra TODOS los partidos de la base. No se puede deshacer.")
-        escrito = st.text_input("Escribe BORRAR para confirmar", key=f"reset_txt_{st.session_state.contador_form}")
-        if st.button("Borrar todos los partidos", type="secondary", icon=":material/delete:", disabled=escrito.strip() != "BORRAR", **ANCHO):
-            reiniciar_sistema()
+        if not st.session_state.get("confirmar_borrar"):
+            st.caption("Borra TODOS los partidos de la base. No se puede deshacer.")
+            if st.button("Borrar todos los partidos", type="secondary", icon=":material/delete:", **ANCHO):
+                st.session_state["confirmar_borrar"] = True
+                st.rerun()
+        else:
+            st.warning("¿Borrar TODOS los partidos? No se puede deshacer.", icon=":material/warning:")
+            c_si, c_no = st.columns(2)
+            if c_si.button("Sí, borrar", type="primary", icon=":material/delete:", **ANCHO):
+                st.session_state["confirmar_borrar"] = False
+                reiniciar_sistema()
+            if c_no.button("Cancelar", icon=":material/close:", **ANCHO):
+                st.session_state["confirmar_borrar"] = False
+                st.rerun()
 
 # --- ESTADÍSTICAS ---
 df_reg = df[df["Fase"] == "Regular"]
@@ -828,11 +842,21 @@ if st.session_state.pop("cerrar_menu", False):
       try{
         var w = window.parent, d = w.document;
         if (w.innerWidth > 768) return;
-        var b = d.querySelector('[data-testid="stSidebarCollapseButton"] button')
-             || d.querySelector('section[data-testid="stSidebar"] button[kind="header"]');
-        if (b) b.click();
+        var selectors = [
+          '[data-testid="stSidebarCollapseButton"] button',
+          '[data-testid="collapsedControl"] button',
+          'button[aria-label="Close sidebar"]',
+          'button[aria-label="Cerrar barra lateral"]',
+          'section[data-testid="stSidebar"] [data-testid="baseButton-header"]',
+          'section[data-testid="stSidebar"] button[kind="header"]',
+          'section[data-testid="stSidebar"] button'
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+          var b = d.querySelector(selectors[i]);
+          if (b) { b.click(); break; }
+        }
       }catch(e){}
-    }, 300);
+    }, 600);
     </script>""", height=0)
 
 # --- ENCABEZADO Y RESUMEN ---
