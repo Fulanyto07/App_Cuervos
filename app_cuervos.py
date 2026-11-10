@@ -6,7 +6,7 @@ import io
 import os
 
 
-# Intentar cargar las librerías de reportes
+# Intentar cargar las librerÃƒÂ­as de reportes
 try:
     from fpdf import FPDF
     FPDF_DISPONIBLE = True
@@ -14,9 +14,9 @@ except ImportError:
     FPDF_DISPONIBLE = False
 
 # =============================================================================
-# CAPA VISUAL (estilo vidrio, tipografía y bloques HTML). Solo presentación:
-# no toca datos ni reglas deportivas. El vidrio es una aproximación web con
-# backdrop-filter; con 'Reducir transparencia' del sistema pasa a sólido.
+# CAPA VISUAL (estilo vidrio, tipografÃƒÂ­a y bloques HTML). Solo presentaciÃƒÂ³n:
+# no toca datos ni reglas deportivas. El vidrio es una aproximaciÃƒÂ³n web con
+# backdrop-filter; con 'Reducir transparencia' del sistema pasa a sÃƒÂ³lido.
 # =============================================================================
 import base64
 import streamlit.components.v1 as components
@@ -34,7 +34,7 @@ NOMBRE_FASE = {
     "Cuartos": "Cuartos",
     "Semifinal": "Semifinal",
     "Final": "Final",
-    "Campeon": "Campeón",
+    "Campeon": "CampeÃƒÂ³n",
     "Eliminado": "Eliminado",
 }
 
@@ -54,7 +54,7 @@ _NUEVO_ANCHO = _version() >= (1, 50)
 
 
 def ancho_completo():
-    """kwargs para que un botón/tabla ocupe todo el ancho, sin avisos de deprecación."""
+    """kwargs para que un botÃƒÂ³n/tabla ocupe todo el ancho, sin avisos de deprecaciÃƒÂ³n."""
     return {"width": "stretch"} if _NUEVO_ANCHO else {"use_container_width": True}
 
 
@@ -83,7 +83,7 @@ def selector(etiqueta, opciones, key, default=None, oculto=False):
     return st.radio(etiqueta, opciones, index=idx, horizontal=True, key=key, label_visibility=vis)
 
 
-def icono_pagina(ruta, respaldo="🐦‍⬛"):
+def icono_pagina(ruta, respaldo="Ã°Å¸ÂÂ¦Ã¢â‚¬ÂÃ¢Â¬â€º"):
     if os.path.exists(ruta):
         try:
             from PIL import Image
@@ -94,7 +94,7 @@ def icono_pagina(ruta, respaldo="🐦‍⬛"):
 
 
 def _html(contenido):
-    # Una sola línea: el markdown de Streamlit corta bloques HTML en líneas vacías.
+    # Una sola lÃƒÂ­nea: el markdown de Streamlit corta bloques HTML en lÃƒÂ­neas vacÃƒÂ­as.
     st.markdown(contenido, unsafe_allow_html=True)
 
 
@@ -114,9 +114,10 @@ CSS = """
   --cv-blur:blur(28px) saturate(160%);
   --cv-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 24px 60px rgba(0,0,0,.35);
   --cv-mono:'Geist Mono', ui-monospace, monospace;
+  color-scheme:dark;
 }
-html, body, .stApp, [data-testid="stAppViewContainer"], .stMarkdown, button, input, textarea, select{
-  font-family:'Geist', system-ui, -apple-system, sans-serif;
+:root, html, body, input, select, textarea{
+  color-scheme:dark !important;
 }
 .stApp{
   background:
@@ -128,19 +129,34 @@ html, body, .stApp, [data-testid="stAppViewContainer"], .stMarkdown, button, inp
   color:var(--cv-text);
 }
 [data-testid="stHeader"]{background:transparent;}
-html, body{background:#0A0B0D;}
+html, body{background:#0A0B0D !important; background-color:#0A0B0D !important; min-height:-webkit-fill-available;}
 [data-testid="stMainBlockContainer"], .main .block-container{padding-top:2rem; max-width:1440px;}
 
 /* ---------- Barra lateral de vidrio ---------- */
 section[data-testid="stSidebar"]{background:transparent !important; border:none !important; border-right:none !important; box-shadow:none !important; outline:none !important;}
 section[data-testid="stSidebar"] > div:first-child{border:none !important; box-shadow:none !important;}
 section[data-testid="stSidebar"]::before,section[data-testid="stSidebar"]::after{display:none !important; content:none !important;}
-[data-testid="stSidebarResizer"]{display:none !important; width:0 !important; min-width:0 !important; max-width:0 !important; opacity:0 !important; pointer-events:none !important; overflow:hidden !important;}
-div[class*="ResizeHandle"],div[class*="resizeHandle"],div[class*="sidebar-resize"]{display:none !important;}
+
+/* Tirador de redimensionamiento (identificado exactamente por diagnÃ³stico) */
+[data-testid="stSidebarResizeHandle"],
+[data-testid="stSidebarResizeHandle"] *,
+[data-testid="stSidebarResizeHandle"]::before,
+[data-testid="stSidebarResizeHandle"]::after,
+[data-testid="stSidebarResizer"],
+div[class*="e1ccv4an3"],
+div[class*="ResizeHandle"],
+div[class*="resizeHandle"],
+div:has(> [data-testid="stSidebarResizeHandle"]),
+div:has(> div > [data-testid="stSidebarResizeHandle"]){
+  display:none !important; width:0 !important; min-width:0 !important; max-width:0 !important;
+  height:0 !important; opacity:0 !important; pointer-events:none !important;
+  visibility:hidden !important; border:none !important; background:transparent !important;
+}
+
 [data-testid="stSidebarContent"]{
   background:var(--cv-glass); backdrop-filter:var(--cv-blur); -webkit-backdrop-filter:var(--cv-blur);
   border:1px solid var(--cv-line); border-radius:22px; box-shadow:var(--cv-shadow);
-  margin:12px 0 12px 12px; height:calc(100% - 24px);
+  margin:12px !important; height:calc(100% - 24px) !important;
 }
 
 /* ---------- Paneles ---------- */
@@ -154,7 +170,7 @@ div[class*="ResizeHandle"],div[class*="resizeHandle"],div[class*="sidebar-resize
   border:1px solid var(--cv-line); border-radius:22px; box-shadow:var(--cv-shadow);
 }
 
-/* ---------- Tipografía y etiquetas ---------- */
+/* ---------- TipografÃƒÂ­a y etiquetas ---------- */
 [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label{color:var(--cv-muted) !important; font-size:13px !important;}
 [data-testid="stCaptionContainer"]{color:var(--cv-faint);}
 
@@ -185,7 +201,7 @@ button[kind="secondary"]:hover, [data-testid="stBaseButton-secondary"]:hover{bac
 .st-key-cv_marcador [data-testid="InputInstructions"]{display:none !important;}
 input:disabled{color:var(--cv-muted) !important; -webkit-text-fill-color:var(--cv-muted) !important;}
 
-/* ---------- Pestañas tipo píldora ---------- */
+/* ---------- PestaÃƒÂ±as tipo pÃƒÂ­ldora ---------- */
 .stTabs [data-baseweb="tab-list"]{gap:4px; background:rgba(255,255,255,.07); padding:3px; border-radius:999px; width:fit-content;}
 .stTabs [data-baseweb="tab"]{height:36px; padding:0 16px; border-radius:999px; background:transparent; color:var(--cv-muted);}
 .stTabs [data-baseweb="tab"][aria-selected="true"]{background:rgba(255,255,255,.16); color:#FFFFFF;}
@@ -344,7 +360,7 @@ def bloque_marca(ruta_escudo):
 
 
 def pasos_fase(estado, df):
-    """Recorrido vertical Regular > Cuartos > Semifinal > Final > Campeón."""
+    """Recorrido vertical Regular > Cuartos > Semifinal > Final > CampeÃƒÂ³n."""
     orden = ["Regular", "Cuartos", "Semifinal", "Final", "Campeon"]
     camino = camino_liguilla(estado, df)
     perdida = next((f for f in FASES_LIGUILLA if camino[f] == "lost"), None)
@@ -422,7 +438,7 @@ def panel_resumen(stats, df_jugados, pendientes=0):
         f'<div class="cv-hero-pts"><span class="cv-lbl">Puntos</span><div><span class="cv-big">{pts}</span><span class="cv-unit">pts</span></div><span class="cv-lbl">{_e(detalle)}</span></div>'
         f'<div class="cv-hero-rec"><div class="cv-bar">{barra}</div>'
         f'<div class="cv-legend"><span><i style="background:{VERDE}"></i>{jg} ganados</span><span><i style="background:{AMARILLO}"></i>{je} empatados</span><span><i style="background:{ROJO_FUERTE}"></i>{jp} perdidos</span></div>'
-        f'<div class="cv-streak"><span class="cv-lbl">Últimos 5</span><div class="cv-chips">{chips}</div></div></div>'
+        f'<div class="cv-streak"><span class="cv-lbl">ÃƒÅ¡ltimos 5</span><div class="cv-chips">{chips}</div></div></div>'
         '<div class="cv-hero-grid">'
         f'<div><span class="cv-lbl">Goles a favor</span><span class="cv-num">{gf}</span></div>'
         f'<div><span class="cv-lbl">Goles en contra</span><span class="cv-num">{gc}</span></div>'
@@ -433,10 +449,10 @@ def panel_resumen(stats, df_jugados, pendientes=0):
 
 
 def vista_previa(gf, gc, ganador_so, pendiente=False):
-    """Muestra qué se va a guardar. Devuelve True si ya se puede guardar."""
+    """Muestra quÃƒÂ© se va a guardar. Devuelve True si ya se puede guardar."""
     listo = True
     if pendiente:
-        txt, pts, fg, bg = "Se guardará como pendiente", "0 pts", "#D4D4D8", "rgba(255,255,255,.06)"
+        txt, pts, fg, bg = "Se guardarÃƒÂ¡ como pendiente", "0 pts", "#D4D4D8", "rgba(255,255,255,.06)"
     elif gf > gc:
         txt, pts, fg, bg = "Victoria", "+3 pts", VERDE, "rgba(48,209,88,.12)"
     elif gf < gc:
@@ -476,7 +492,7 @@ _RONDA = {"Cuartos": "cuartos de final", "Semifinal": "semifinal", "Final": "la 
 
 
 def panel_liguilla(estado, df):
-    """Tarjeta de estado + camino al título. Para liguilla activa, eliminado o campeón."""
+    """Tarjeta de estado + camino al tÃƒÂ­tulo. Para liguilla activa, eliminado o campeÃƒÂ³n."""
     lig = _filas_liguilla(df)
     camino = camino_liguilla(estado, df)
 
@@ -511,7 +527,7 @@ def panel_liguilla(estado, df):
             sub = "Clasificaron a la liguilla"
         ico, fg, bg = _ICO_FLECHA, "#F2F2F4", "rgba(255,255,255,.08)"
 
-    etiquetas = {"won": ("Ganado", VERDE, VERDE), "lost": ("Eliminados aquí", ROJO_FUERTE, ROJO),
+    etiquetas = {"won": ("Ganado", VERDE, VERDE), "lost": ("Eliminados aquÃƒÂ­", ROJO_FUERTE, ROJO),
                  "current": ("Por jugar", ACENTO, "#A1A1AA"), "todo": ("Sin jugar", "rgba(255,255,255,.10)", "#A1A1AA")}
     pasos = ""
     for f in FASES_LIGUILLA:
@@ -519,9 +535,9 @@ def panel_liguilla(estado, df):
         tcolor = "var(--cv-faint)" if camino[f] == "todo" else "var(--cv-text)"
         pasos += f'<div><div class="cv-path-bar" style="background:{barra}"></div><b style="color:{tcolor}">{_e(NOMBRE_FASE[f])}</b><small style="color:{color}">{txt}</small></div>'
     if estado == "Campeon":
-        pasos += f'<div><div class="cv-path-bar" style="background:{AMARILLO}"></div><b>Campeón</b><small style="color:{AMARILLO}">Título</small></div>'
+        pasos += f'<div><div class="cv-path-bar" style="background:{AMARILLO}"></div><b>CampeÃƒÂ³n</b><small style="color:{AMARILLO}">TÃƒÂ­tulo</small></div>'
     else:
-        pasos += '<div><div class="cv-path-bar" style="background:rgba(255,255,255,.10)"></div><b style="color:var(--cv-faint)">Campeón</b><small style="color:#A1A1AA">Sin jugar</small></div>'
+        pasos += '<div><div class="cv-path-bar" style="background:rgba(255,255,255,.10)"></div><b style="color:var(--cv-faint)">CampeÃƒÂ³n</b><small style="color:#A1A1AA">Sin jugar</small></div>'
 
     _html(
         '<div class="cv-glass cv-status">'
@@ -536,16 +552,77 @@ def vacio(titulo, texto):
     _html(f'<div class="cv-empty"><b>{_e(titulo)}</b>{_e(texto)}</div>')
 
 # =============================================================================
-# APLICACIÓN
+# APLICACIÃƒâ€œN
 # =============================================================================
 
 LOGO_PATH = "cuervos_logo.png"
 
-# 1. Configuración de la página
+# 1. ConfiguraciÃƒÂ³n de la pÃƒÂ¡gina
 st.set_page_config(page_title="Gestor Cuervos Cloud", page_icon=icono_pagina(LOGO_PATH), layout="wide")
 aplicar_estilo()
 
-# 2. Conexión a Supabase
+# Fixes definitivos para DOM: eliminar stSidebarResizeHandle y forzar color-scheme para Safari
+components.html("""<script>
+(function(){
+  function fixAll(){
+    try {
+      var docs = [window.document];
+      try { if (window.parent && window.parent.document) docs.push(window.parent.document); } catch(e){}
+      try { if (window.top && window.top.document) docs.push(window.top.document); } catch(e){}
+
+      docs.forEach(function(d){
+        if (!d) return;
+
+        // 1. Eliminar fÃ­sicamente stSidebarResizeHandle del DOM
+        var handles = d.querySelectorAll('[data-testid="stSidebarResizeHandle"], [class*="e1ccv4an3"]');
+        handles.forEach(function(h){
+          try { h.remove(); } catch(e){ h.style.display = 'none'; }
+        });
+
+        // 2. Inyectar meta color-scheme dark para que iOS Safari no dibuje barras blancas
+        if (d.head) {
+          var m = d.querySelector('meta[name="color-scheme"]');
+          if (!m) {
+            m = d.createElement('meta');
+            m.name = 'color-scheme';
+            d.head.appendChild(m);
+          }
+          m.content = 'dark';
+
+          var tc = d.querySelector('meta[name="theme-color"]');
+          if (!tc) {
+            tc = d.createElement('meta');
+            tc.name = 'theme-color';
+            d.head.appendChild(tc);
+          }
+          tc.content = '#0A0B0D';
+        }
+
+        // 3. Desactivar autofill de contraseÃ±as/tarjetas en los inputs para evitar la barra blanca de iOS
+        d.querySelectorAll('input').forEach(function(inp){
+          inp.setAttribute('autocomplete', 'off');
+          inp.setAttribute('autocorrect', 'off');
+          inp.setAttribute('spellcheck', 'false');
+        });
+      });
+    } catch(e){}
+  }
+
+  fixAll();
+  [150, 400, 900, 1800, 3000].forEach(function(ms){ setTimeout(fixAll, ms); });
+
+  if (typeof MutationObserver !== 'undefined') {
+    setTimeout(function(){
+      try {
+        var obs = new MutationObserver(fixAll);
+        obs.observe(window.parent.document.body, { childList: true, subtree: true });
+      } catch(e){}
+    }, 500);
+  }
+})();
+</script>""", height=0)
+
+# 2. ConexiÃƒÂ³n a Supabase
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -554,7 +631,7 @@ def init_connection():
 
 supabase = init_connection()
 
-# 3. Control de Sesión
+# 3. Control de SesiÃƒÂ³n
 if 'contador_form' not in st.session_state:
     st.session_state.contador_form = 0
 if 'estado_torneo' not in st.session_state:
@@ -574,7 +651,7 @@ def limpiar_formulario():
     st.session_state.contador_form += 1
 
 def avisar_y_recargar(mensaje):
-    """Guarda un aviso que sobrevive al rerun (st.rerun borra lo que se mostró antes)."""
+    """Guarda un aviso que sobrevive al rerun (st.rerun borra lo que se mostrÃƒÂ³ antes)."""
     st.session_state["aviso"] = mensaje
     st.rerun()
 
@@ -642,7 +719,7 @@ def reiniciar_sistema():
     except Exception as e:
         st.error(f"Error al reiniciar: {e}")
 
-# 5. Lógica Deportiva
+# 5. LÃƒÂ³gica Deportiva
 def procesar_marcador(favor, contra, so_ganador):
     if favor > contra: return 3, "Victoria"
     elif favor < contra: return 0, "Derrota"
@@ -651,14 +728,14 @@ def procesar_marcador(favor, contra, so_ganador):
 def obtener_icono(res):
     if pd.isna(res): return ""
     res_s = str(res)
-    if "Victoria" in res_s: return "✅ " + res_s
-    if "Empate" in res_s: return "➖ " + res_s
-    if "Pendiente" in res_s: return "⏳ " + res_s
-    return "❌ " + res_s
+    if "Victoria" in res_s: return "Ã¢Å“â€¦ " + res_s
+    if "Empate" in res_s: return "Ã¢Å¾â€“ " + res_s
+    if "Pendiente" in res_s: return "Ã¢ÂÂ³ " + res_s
+    return "Ã¢ÂÅ’ " + res_s
 
 def limpiar_icono(res):
     if pd.isna(res): return ""
-    return str(res).replace("✅ ", "").replace("➖ ", "").replace("❌ ", "").replace("⏳ ", "")
+    return str(res).replace("Ã¢Å“â€¦ ", "").replace("Ã¢Å¾â€“ ", "").replace("Ã¢ÂÅ’ ", "").replace("Ã¢ÂÂ³ ", "")
 
 def generar_excel(df_reg, stats):
     output = io.BytesIO()
@@ -736,9 +813,9 @@ with st.sidebar:
             st.session_state.preguntar_clasificacion = True
 
         if st.session_state.preguntar_clasificacion:
-            st.warning("¿Clasificaron a la liguilla?", icon=":material/help:")
+            st.warning("Ã‚Â¿Clasificaron a la liguilla?", icon=":material/help:")
             c1, c2 = st.columns(2)
-            if c1.button("Sí", **ANCHO):
+            if c1.button("SÃƒÂ­", **ANCHO):
                 st.session_state.update({
                     "clasifico_liguilla": True,
                     "temporada_terminada": True,
@@ -760,7 +837,7 @@ with st.sidebar:
                 avisar_y_recargar("Fase regular cerrada: no clasificaron.")
     else:
         if st.button("Deshacer cierre", icon=":material/undo:", **ANCHO):
-            # Borramos físicamente los partidos de Liguilla para que no reaparezcan
+            # Borramos fÃƒÂ­sicamente los partidos de Liguilla para que no reaparezcan
             try:
                 supabase.table("resultados").delete().in_("Fase", ["Cuartos", "Semifinal", "Final"]).execute()
             except Exception as e:
@@ -775,7 +852,7 @@ with st.sidebar:
             })
             limpiar_formulario()
             st.cache_data.clear()
-            avisar_y_recargar("Cierre deshecho: la liguilla se borró y la temporada regresa a fase regular.")
+            avisar_y_recargar("Cierre deshecho: la liguilla se borrÃƒÂ³ y la temporada regresa a fase regular.")
 
     if st.button("Refrescar datos", icon=":material/refresh:", **ANCHO):
         st.cache_data.clear(); st.rerun()
@@ -785,7 +862,7 @@ with st.sidebar:
         archivo_subido = st.file_uploader("Archivo Excel", type=["xlsx"], label_visibility="collapsed")
 
         if archivo_subido is not None:
-            if st.button("Confirmar restauración", type="primary", icon=":material/warning:", **ANCHO):
+            if st.button("Confirmar restauraciÃƒÂ³n", type="primary", icon=":material/warning:", **ANCHO):
                 try:
                     df_nuevo = pd.read_excel(archivo_subido)
                     supabase.table("resultados").delete().neq("id", 0).execute()
@@ -796,7 +873,7 @@ with st.sidebar:
                     if registros:
                         supabase.table("resultados").insert(registros).execute()
                     st.cache_data.clear()
-                    avisar_y_recargar("Base de datos restaurada con éxito.")
+                    avisar_y_recargar("Base de datos restaurada con ÃƒÂ©xito.")
                 except Exception as e:
                     st.error(f"Error al restaurar: {e}")
 
@@ -807,16 +884,16 @@ with st.sidebar:
                 st.session_state["confirmar_borrar"] = True
                 st.rerun()
         else:
-            st.warning("¿Borrar TODOS los partidos? No se puede deshacer.", icon=":material/warning:")
+            st.warning("Ã‚Â¿Borrar TODOS los partidos? No se puede deshacer.", icon=":material/warning:")
             c_si, c_no = st.columns(2)
-            if c_si.button("Sí, borrar", type="primary", icon=":material/delete:", **ANCHO):
+            if c_si.button("SÃƒÂ­, borrar", type="primary", icon=":material/delete:", **ANCHO):
                 st.session_state["confirmar_borrar"] = False
                 reiniciar_sistema()
             if c_no.button("Cancelar", icon=":material/close:", **ANCHO):
                 st.session_state["confirmar_borrar"] = False
                 st.rerun()
 
-# --- ESTADÍSTICAS ---
+# --- ESTADÃƒÂSTICAS ---
 df_reg = df[df["Fase"] == "Regular"]
 df_j = df_reg[~df_reg["Resultado"].astype(str).str.contains("Pendiente", na=False)]
 n_pendientes = int(df_reg["Resultado"].astype(str).str.contains("Pendiente", na=False).sum())
@@ -831,11 +908,11 @@ stats_dict = {
     "PTS": int(pd.to_numeric(df_reg["Puntos"], errors='coerce').fillna(0).sum())
 }
 
-# --- AVISO DE LA ACCIÓN ANTERIOR ---
+# --- AVISO DE LA ACCIÃƒâ€œN ANTERIOR ---
 if "aviso" in st.session_state:
     st.toast(st.session_state.pop("aviso"), icon=":material/check_circle:")
 
-# Tras reiniciar, en celular cierra el menú lateral para mostrar la pantalla principal
+# Tras reiniciar, en celular cierra el menÃƒÂº lateral para mostrar la pantalla principal
 if st.session_state.pop("cerrar_menu", False):
     components.html("""<script>
     setTimeout(function(){
@@ -864,7 +941,7 @@ estado_actual = st.session_state.estado_torneo
 if estado_actual == "Regular":
     max_reg = pd.to_numeric(df_reg["Jornada"], errors='coerce').max()
     prox_reg = int(max_reg) + 1 if pd.notna(max_reg) else 1
-    encabezado("Temporada regular", f"Próximo partido: jornada {prox_reg}")
+    encabezado("Temporada regular", f"PrÃƒÂ³ximo partido: jornada {prox_reg}")
 else:
     titulo = "Liguilla" if not df_liguilla.empty or estado_actual in ["Cuartos", "Semifinal", "Final"] else "Temporada terminada"
     encabezado(titulo, f"Fase regular cerrada con {stats_dict['PTS']} puntos")
@@ -893,7 +970,7 @@ with col_f:
             modo = "Nuevo Partido"
             if not df_pend.empty:
                 etiquetas = {"Nuevo partido": "Nuevo Partido", f"Pendiente ({len(df_pend)})": "Actualizar Pendiente"}
-                eleccion = selector("Acción", list(etiquetas.keys()), key=f"m_{suffix}", default="Nuevo partido", oculto=True)
+                eleccion = selector("AcciÃƒÂ³n", list(etiquetas.keys()), key=f"m_{suffix}", default="Nuevo partido", oculto=True)
                 modo = etiquetas.get(eleccion, "Nuevo Partido")
 
             if modo == "Nuevo Partido":
@@ -934,7 +1011,7 @@ with col_f:
                     gf = cx.number_input("Goles Cuervos", min_value=0, key=f"gf_{suffix}")
                     gc = cy.number_input("Goles rival", min_value=0, key=f"gc_{suffix}")
                 if gf == gc:
-                    so = selector("Empate. ¿Quién ganó el shootout?", ["Cuervos", "Rival"], key=f"so_{suffix}")
+                    so = selector("Empate. Ã‚Â¿QuiÃƒÂ©n ganÃƒÂ³ el shootout?", ["Cuervos", "Rival"], key=f"so_{suffix}")
 
             if fase == "Regular" or pnd:
                 listo = vista_previa(gf, gc, so, pnd)
@@ -1039,3 +1116,5 @@ with col_h:
                     pd_final_lig = pd.concat([df[df["Fase"] == "Regular"], ed_lig], ignore_index=True)
                     guardar_correcciones(df, pd_final_lig)
                     st.rerun()
+
+
