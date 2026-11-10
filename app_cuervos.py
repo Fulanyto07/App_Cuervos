@@ -873,6 +873,7 @@ with st.sidebar:
                     if registros:
                         supabase.table("resultados").insert(registros).execute()
                     st.cache_data.clear()
+                    st.session_state["cerrar_menu"] = True
                     avisar_y_recargar("Base de datos restaurada con éxito.")
                 except Exception as e:
                     st.error(f"Error al restaurar: {e}")
@@ -912,11 +913,13 @@ stats_dict = {
 if "aviso" in st.session_state:
     st.toast(st.session_state.pop("aviso"), icon=":material/check_circle:")
 
-# Tras reiniciar, cierra el menú lateral automáticamente para regresar a la pantalla de inicio
+# Tras reiniciar o restaurar, cierra el menú lateral automáticamente una sola vez
 if st.session_state.pop("cerrar_menu", False):
     components.html("""<script>
     (function(){
+      var yaCerro = false;
       function cerrarBarra(){
+        if (yaCerro) return;
         try{
           var docs = [window.document];
           try{ if(window.parent && window.parent.document) docs.push(window.parent.document); }catch(e){}
@@ -926,27 +929,33 @@ if st.session_state.pop("cerrar_menu", False):
             var d = docs[i];
             if(!d) continue;
 
-            // Verificar si el sidebar está presente/abierto
             var sidebar = d.querySelector('section[data-testid="stSidebar"]');
             if(!sidebar) continue;
 
-            // Buscar el botón de colapso (icono << en el encabezado del sidebar)
-            var b = d.querySelector('[data-testid="stSidebarCollapseButton"] button')
-                 || d.querySelector('[data-testid="stSidebarCollapseButton"]')
-                 || d.querySelector('[data-testid="stSidebarHeader"] button')
-                 || d.querySelector('section[data-testid="stSidebar"] button[kind="header"]')
-                 || d.querySelector('button[aria-label="Close sidebar"]')
-                 || d.querySelector('button[aria-label="Cerrar barra lateral"]')
-                 || d.querySelector('button[aria-label*="sidebar" i]');
+            // Si ya está colapsada, no hacer nada
+            if (sidebar.getAttribute('aria-expanded') === 'false') {
+              yaCerro = true;
+              return;
+            }
+
+            // Buscar ÚNICAMENTE el botón de cerrar DENTRO de la barra (jamás en todo el documento)
+            var b = sidebar.querySelector('[data-testid="stSidebarCollapseButton"] button')
+                 || sidebar.querySelector('[data-testid="stSidebarCollapseButton"]')
+                 || sidebar.querySelector('[data-testid="stSidebarHeader"] button')
+                 || sidebar.querySelector('button[aria-label="Close sidebar"]')
+                 || sidebar.querySelector('button[aria-label="Cerrar barra lateral"]')
+                 || sidebar.querySelector('button[kind="header"]');
 
             if(b){
+              yaCerro = true;
               b.click();
               break;
             }
           }
         }catch(e){}
       }
-      [200, 500, 900, 1500].forEach(function(t){ setTimeout(cerrarBarra, t); });
+      setTimeout(cerrarBarra, 300);
+      setTimeout(cerrarBarra, 700);
     })();
     </script>""", height=0)
 
